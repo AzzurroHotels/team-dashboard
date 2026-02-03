@@ -191,7 +191,7 @@ function openModal(id = null) {
     taskDesc.value = t.desc || "";
     taskUpdate.value = t.update || "";
     taskDept.value = t.department || "Admin";
-    taskOwner.value = t.owner || "";
+    if (taskOwner) taskOwner.value = t.owner || "";
     taskReceived.value = t.received || "";
     taskDeadline.value = t.deadline || "";
     taskUrgency.value = t.urgency || "low";
@@ -200,7 +200,7 @@ function openModal(id = null) {
     taskDesc.value = "";
     taskUpdate.value = "";
     taskDept.value = "Admin";
-    taskOwner.value = "";
+    if (taskOwner) taskOwner.value = "";
     taskReceived.value = "";
     taskDeadline.value = "";
     taskUrgency.value = "low";
@@ -220,7 +220,7 @@ function saveTask() {
     desc: taskDesc.value || "",
     update: taskUpdate.value || "",
     department: taskDept.value || "Admin",
-    owner: taskOwner.value || "",
+    owner: (taskOwner?.value || ""),
     received: taskReceived.value || "",
     deadline: taskDeadline.value || "",
     urgency: taskUrgency.value || "low",
