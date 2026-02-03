@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Dashboard — Login</title>
+  <link rel="stylesheet" href="auth.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="card">
+      <div class="brand">
+        <div class="logo">PM</div>
+        <div class="brand-text">
+          <h1>Team Dashboard</h1>
+          <p class="muted">Sign in to access your team workspace.</p>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <button class="link-btn" id="btnShowSignup" type="button">Create Account</button>
+        <button class="link-btn" id="btnShowReset" type="button">Change Password</button>
+      </div>
+
+      <!-- Login is always visible -->
+      <div class="panel" id="panel-login">
+        <form id="loginForm">
+          <label for="loginEmail">Email</label>
+          <input id="loginEmail" type="email" autocomplete="email" required placeholder="name@company.com" />
+
+          <label for="loginPassword">Password</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••" />
+
+          <button class="primary" type="submit" id="loginBtn">Login</button>
+        </form>
+      </div>
+
+      <!-- Create account (toggle) -->
+      <div class="panel hidden" id="panel-signup">
+        <form id="signupForm">
+          <label for="signupEmail">Email</label>
+          <input id="signupEmail" type="email" autocomplete="email" required placeholder="name@company.com" />
+
+          <label for="signupPassword">Password</label>
+          <input id="signupPassword" type="password" autocomplete="new-password" required placeholder="At least 6 characters" />
+
+          <button class="primary" type="submit" id="signupBtn">Create Account</button>
+          <p class="muted small">You may receive a confirmation email depending on your Supabase Auth settings.</p>
+        </form>
+      </div>
+
+      <!-- Reset password (toggle) -->
+      <div class="panel hidden" id="panel-reset">
+        <form id="resetForm">
+          <label for="resetEmail">Email</label>
+          <input id="resetEmail" type="email" required placeholder="name@company.com" />
+          <button class="primary" type="submit">Send reset link</button>
+        </form>
+      </div>
+
+      <div id="msg" class="msg" aria-live="polite"></div>
+
+      <footer class="footer">
+        <span class="muted small">Powered by Supabase Auth</span>
+      </footer>
+    </section>
+  </main>
+
+  <script type="module" src="auth.js"></script>
+</body>
+</html>
