@@ -1,136 +1,543 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<title>PM Tool — Workspace</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<link rel="stylesheet" href="styles.css" />
-</head>
+// app.js (module)
+import { supabase, isSupabaseConfigured } from "./supabase-config.js";
 
-<body>
-<div class="page">
+/* =========================
+   DOM
+========================= */
+const $ = (id) => document.getElementById(id);
 
-  <header>
-    <span>Team Dashboard</span>
+const searchInput = $("searchInput");
+const searchBtn = $("searchBtn");
+const clearSearchBtn = $("clearSearchBtn");
 
-    <div class="header-actions">
-      <div>
-        <input type="text" id="searchInput" placeholder="Search tasks...">
-        <button id="searchBtn">Search</button>
-        <button id="clearSearchBtn">Clear</button>
+const exportCSVBtn = $("exportCSV");
+const addTaskBtn = $("globalAddTask");
+const logoutBtn = $("logoutBtn");
+
+const themeSwitch = $("themeSwitch");
+
+const modal = $("taskModal");
+const saveBtn = $("saveBtn");
+const cancelBtn = $("cancelBtn");
+
+const taskTitle = $("taskTitle");
+const taskDesc = $("taskDesc");
+const taskUpdate = $("taskUpdate");
+const taskDept = $("taskDept");
+const taskOwner = $("taskOwner");
+const taskReceived = $("taskReceived");
+const taskDeadline = $("taskDeadline");
+const taskUrgency = $("taskUrgency");
+
+const archiveList = $("archiveList");
+
+/* =========================
+   AUTH
+========================= */
+async function requireAuth() {
+  if (!isSupabaseConfigured()) {
+    alert("Supabase is not configured yet. Please paste your URL + anon key in supabase-config.js.");
+    window.location.href = "./index.html";
+    return false;
+  }
+  const { data } = await supabase.auth.getSession();
+  if (!data?.session) {
+    window.location.href = "./index.html";
+    return false;
+  }
+  return true;
+}
+
+async function doLogout() {
+  await supabase.auth.signOut();
+  window.location.href = "./index.html";
+}
+
+/* =========================
+   THEME (persisted)
+========================= */
+function applyTheme(mode) {
+  if (mode === "dark") {
+    document.body.classList.add("dark");
+    themeSwitch.checked = true;
+  } else {
+    document.body.classList.remove("dark");
+    themeSwitch.checked = false;
+  }
+  localStorage.setItem("pm_theme", mode);
+}
+
+(function initTheme() {
+  const saved = localStorage.getItem("pm_theme");
+  applyTheme(saved || "light");
+})();
+
+themeSwitch?.addEventListener("change", () => {
+  applyTheme(themeSwitch.checked ? "dark" : "light");
+});
+
+/* =========================
+   DATA
+========================= */
+let tasks = JSON.parse(localStorage.getItem("tasks") || "[]");
+let archive = JSON.parse(localStorage.getItem("archive") || "[]");
+let editId = null;
+
+const SB_TABLE_TASKS = "tasks";
+const SB_TABLE_ARCHIVE = "archive";
+
+/* =========================
+   SUPABASE LOAD/SAVE
+========================= */
+async function sbLoadAll() {
+  if (!isSupabaseConfigured()) return false;
+
+  const [{ data: tData, error: tErr }, { data: aData, error: aErr }] = await Promise.all([
+    supabase.from(SB_TABLE_TASKS).select("*").order("id", { ascending: true }),
+    supabase.from(SB_TABLE_ARCHIVE).select("*").order("id", { ascending: true }),
+  ]);
+
+  if (tErr || aErr) {
+    console.warn("Supabase load failed; falling back to localStorage.", tErr || aErr);
+    return false;
+  }
+
+  tasks = (tData || []).map((r) => r.payload).filter(Boolean);
+  archive = (aData || []).map((r) => r.payload).filter(Boolean);
+
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+  localStorage.setItem("archive", JSON.stringify(archive));
+  return true;
+}
+
+let sbSaveTimer = null;
+function sbScheduleSave() {
+  // Debounce to avoid spamming on drag/drop
+  clearTimeout(sbSaveTimer);
+  sbSaveTimer = setTimeout(() => sbUpsertAll(), 250);
+}
+
+async function sbUpsertAll() {
+  if (!isSupabaseConfigured()) return;
+
+  const tRows = (tasks || []).map((t) => ({ id: t.id, payload: t }));
+  const aRows = (archive || []).map((a) => ({ id: a.id, payload: a }));
+
+  const [tUp, aUp] = await Promise.all([
+    supabase.from(SB_TABLE_TASKS).upsert(tRows, { onConflict: "id" }),
+    supabase.from(SB_TABLE_ARCHIVE).upsert(aRows, { onConflict: "id" }),
+  ]);
+
+  if (tUp.error || aUp.error) {
+    console.warn("Supabase upsert failed.", tUp.error || aUp.error);
+    return;
+  }
+
+  // Keep tables clean by removing rows that no longer exist locally
+  const tIds = tRows.map((r) => r.id);
+  const aIds = aRows.map((r) => r.id);
+
+  await Promise.all([
+    tIds.length
+      ? supabase.from(SB_TABLE_TASKS).delete().not("id", "in", `(${tIds.join(",")})`)
+      : supabase.from(SB_TABLE_TASKS).delete().neq("id", -1),
+    aIds.length
+      ? supabase.from(SB_TABLE_ARCHIVE).delete().not("id", "in", `(${aIds.join(",")})`)
+      : supabase.from(SB_TABLE_ARCHIVE).delete().neq("id", -1),
+  ]);
+}
+
+function persistAll() {
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+  localStorage.setItem("archive", JSON.stringify(archive));
+  sbScheduleSave();
+}
+
+/* =========================
+   REALTIME (EVERYONE SEES UPDATES)
+========================= */
+function sbSubscribeRealtime() {
+  if (!isSupabaseConfigured()) return;
+
+  const ch = supabase.channel("pmtool-realtime");
+
+  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_TASKS }, async () => {
+    await sbLoadAll();
+    renderTasks();
+    renderArchive();
+  });
+
+  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_ARCHIVE }, async () => {
+    await sbLoadAll();
+    renderTasks();
+    renderArchive();
+  });
+
+  ch.subscribe();
+}
+
+/* =========================
+   MODAL
+========================= */
+function openModal(id = null) {
+  editId = id;
+  modal.style.display = "flex";
+
+  if (id) {
+    const t = tasks.find((x) => x.id === id);
+    if (!t) return;
+
+    taskTitle.value = t.title || "";
+    taskDesc.value = t.desc || "";
+    taskUpdate.value = t.update || "";
+    taskDept.value = t.department || "Admin";
+    taskOwner.value = t.owner || "";
+    taskReceived.value = t.received || "";
+    taskDeadline.value = t.deadline || "";
+    taskUrgency.value = t.urgency || "low";
+  } else {
+    taskTitle.value = "";
+    taskDesc.value = "";
+    taskUpdate.value = "";
+    taskDept.value = "Admin";
+    taskOwner.value = "";
+    taskReceived.value = "";
+    taskDeadline.value = "";
+    taskUrgency.value = "low";
+  }
+}
+
+function closeModal() {
+  modal.style.display = "none";
+  editId = null;
+}
+
+function saveTask() {
+  if (!taskTitle.value.trim()) return alert("Title required");
+
+  const payload = {
+    title: taskTitle.value.trim(),
+    desc: taskDesc.value || "",
+    update: taskUpdate.value || "",
+    department: taskDept.value || "Admin",
+    owner: taskOwner.value || "",
+    received: taskReceived.value || "",
+    deadline: taskDeadline.value || "",
+    urgency: taskUrgency.value || "low",
+  };
+
+  if (editId) {
+    Object.assign(tasks.find((t) => t.id === editId), payload);
+  } else {
+    tasks.push({ id: Date.now(), ...payload });
+  }
+
+  persistAll();
+  closeModal();
+  renderTasks();
+}
+
+/* =========================
+   RENDERING
+========================= */
+const DEPT_KEYS = ["admin", "workforce", "compliance", "complaints", "acquisition", "teletrim"];
+const KEY_TO_LABEL = {
+  admin: "Admin",
+  workforce: "Workforce",
+  compliance: "Compliance",
+  complaints: "Complaints",
+  acquisition: "Acquisition",
+  teletrim: "Teletrim",
+};
+const LABEL_TO_KEY = Object.fromEntries(Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k]));
+
+function normalizeDeptKey(v) {
+  const s = String(v || "").trim();
+  const key = LABEL_TO_KEY[s] || s.toLowerCase();
+  return DEPT_KEYS.includes(key) ? key : "admin";
+}
+
+function keyToLabel(key) {
+  return KEY_TO_LABEL[normalizeDeptKey(key)] || "Admin";
+}
+
+function renderTasks(filtered = null) {
+  document.querySelectorAll(".tasks-container").forEach((c) => (c.innerHTML = ""));
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  const list = filtered || tasks;
+
+  // Column counts
+  updateColumnCounts(list);
+
+  list.forEach((t) => {
+    // Back-compat
+    if (!t.deadline && t.due) t.deadline = t.due;
+    if (!t.received && t.start) t.received = t.start;
+    if (!t.urgency && t.priority) t.urgency = t.priority;
+    if (!t.department && t.assignedTo) t.department = t.assignedTo;
+
+    const deptKey = normalizeDeptKey(t.department);
+    const col = document.querySelector(`[data-dept="${deptKey}"] .tasks-container`);
+    if (!col) return;
+
+    const div = document.createElement("div");
+    div.className = `task priority-${(t.urgency || "low")}`;
+    div.draggable = true;
+    div.dataset.id = t.id;
+
+    if (t.deadline) {
+      const dueDate = new Date(t.deadline);
+      dueDate.setHours(0, 0, 0, 0);
+      if (dueDate.getTime() === today.getTime()) div.classList.add("due-today");
+      else if (dueDate.getTime() === tomorrow.getTime()) div.classList.add("due-tomorrow");
+    }
+
+    const dueText = t.deadline ? formatDate(t.deadline) : "No deadline";
+    const dueClass = t.deadline ? "task-due" : "task-due missing";
+
+    div.innerHTML = `
+      <div class="task-top">
+        <div class="task-title">${escapeHTML(t.title)}</div>
+        <div class="${dueClass}">${escapeHTML(dueText)}</div>
       </div>
-
-      <div class="theme-toggle" title="Toggle Light/Dark mode">
-        <span>Light</span>
-        <label class="switch">
-          <input type="checkbox" id="themeSwitch">
-          <span class="slider"></span>
-        </label>
-        <span>Dark</span>
+      <div class="task-actions">
+        <button class="archive-btn">Archive</button>
+        <button class="delete-btn">Delete</button>
       </div>
-    </div>
-  </header>
+    `;
 
-  <div id="exportButtons">
-    <div class="btn-col">
-      <button id="exportCSV">Export CSV</button>
-      <button id="logoutBtn">Logout</button>
-      <button id="globalAddTask">+ Add Task</button>
-    </div>
-</div>
+    div.querySelector(".archive-btn").onclick = (e) => {
+      e.stopPropagation();
+      archive.push({ ...t, archivedAt: new Date().toLocaleString() });
+      tasks = tasks.filter((x) => x.id !== t.id);
+      persistAll();
+      renderTasks();
+      renderArchive();
+    };
 
-  
-  <div class="board">
-    <div class="column" data-dept="admin">
-      <h3><span class="title">Admin</span></h3>
-      <div class="tasks-container"></div>
-    </div>
+    div.querySelector(".delete-btn").onclick = (e) => {
+      e.stopPropagation();
+      if (confirm("Are you sure you want to delete this task?")) {
+        tasks = tasks.filter((x) => x.id !== t.id);
+        persistAll();
+        renderTasks();
+      }
+    };
 
-    <div class="column" data-dept="workforce">
-      <h3><span class="title">Workforce</span></h3>
-      <div class="tasks-container"></div>
-    </div>
+    div.onclick = () => openModal(t.id);
 
-    <div class="column" data-dept="compliance">
-      <h3><span class="title">Compliance</span></h3>
-      <div class="tasks-container"></div>
-    </div>
+    col.appendChild(div);
+  });
 
-    <div class="column" data-dept="complaints">
-      <h3><span class="title">Complaints</span></h3>
-      <div class="tasks-container"></div>
-    </div>
+  enableDragAndDrop();
+}
 
-    <div class="column" data-dept="acquisition">
-      <h3><span class="title">Acquisition</span></h3>
-      <div class="tasks-container"></div>
-    </div>
+function updateColumnCounts(list) {
+  document.querySelectorAll(".column").forEach((col) => {
+    const deptKey = normalizeDeptKey(col.dataset.dept);
+    const title = col.querySelector(".title");
+    if (!title) return;
 
-    <div class="column" data-dept="teletrim">
-      <h3><span class="title">Teletrim</span></h3>
-      <div class="tasks-container"></div>
-    </div>
-  </div>
+    const baseTitle = title.dataset.base || title.textContent.replace(/\(\d+\)$/g, "").trim();
+    title.dataset.base = baseTitle;
 
+    const count = list.filter((t) => normalizeDeptKey(t.department) === deptKey).length;
+    title.textContent = `${baseTitle} (${count})`;
+  });
+}
 
-  <div class="archive-wrapper">
-    <h2>Archived Tasks</h2>
-    <div id="archiveList"></div>
-  </div>
+function renderArchive() {
+  archiveList.innerHTML = archive.length ? "" : "<p>No archived tasks</p>";
 
-</div>
+  archive.forEach((t) => {
+    // Back-compat
+    if (!t.deadline && t.due) t.deadline = t.due;
 
-<!-- Modal -->
-<div class="modal" id="taskModal">
-  <div class="modal-content">
-    <h3>Task Details</h3>
+    const div = document.createElement("div");
+    div.className = "task";
 
-    <label for="taskTitle">Title</label>
-    <input id="taskTitle" placeholder="Enter title">
+    const dueText = t.deadline ? formatDate(t.deadline) : "No deadline";
+    const dueClass = t.deadline ? "task-due" : "task-due missing";
 
-    <label for="taskDesc">Description</label>
-    <textarea id="taskDesc" placeholder="Enter description"></textarea>
+    div.innerHTML = `
+      <div class="task-top">
+        <div class="task-title">${escapeHTML(t.title)}</div>
+        <div class="${dueClass}">${escapeHTML(dueText)}</div>
+      </div>
+      <div class="task-actions">
+        <button class="archive-btn">Restore</button>
+        <button class="delete-btn">Delete</button>
+      </div>
+    `;
 
-    <label for="taskUpdate">Update</label>
-    <textarea id="taskUpdate" placeholder="Add the latest update (optional)"></textarea>
-<label for="taskDept">Department</label>
-<select id="taskDept">
-  <option value="" disabled selected>Select department</option>
-  <option value="Admin">Admin</option>
-  <option value="Workforce">Workforce</option>
-  <option value="Compliance">Compliance</option>
-  <option value="Complaints">Complaints</option>
-  <option value="Acquisition">Acquisition</option>
-  <option value="Teletrim">Teletrim</option>
-</select>
+    div.querySelector(".archive-btn").onclick = (e) => {
+      e.stopPropagation();
+      // Restored task keeps its department
+      tasks.push({ ...t });
+      archive = archive.filter((x) => x.id !== t.id);
+      persistAll();
+      renderTasks();
+      renderArchive();
+    };
 
+    div.querySelector(".delete-btn").onclick = (e) => {
+      e.stopPropagation();
+      if (confirm("Are you sure you want to permanently delete this archived task?")) {
+        archive = archive.filter((x) => x.id !== t.id);
+        persistAll();
+        renderArchive();
+      }
+    };
 
-    
+    archiveList.appendChild(div);
+  });
+}
 
-    <label for="taskOwner">Owner</label>
-    <input id="taskOwner" placeholder="Enter owner name">
+/* =========================
+   DRAG & DROP (department move)
+========================= */
+function enableDragAndDrop() {
+  document.querySelectorAll(".tasks-container").forEach((col) => {
+    col.ondragover = (e) => e.preventDefault();
+    col.ondrop = (e) => {
+      const id = +e.dataTransfer.getData("id");
+      const t = tasks.find((x) => x.id === id);
+      if (!t) return;
 
-<label for="taskReceived">Received Date</label>
-    <input type="date" id="taskReceived">
+      const deptKey = normalizeDeptKey(col.parentElement.dataset.dept);
+      t.department = keyToLabel(deptKey);
 
-    <label for="taskDeadline">Deadline</label>
-    <input type="date" id="taskDeadline">
+      persistAll();
+      renderTasks();
+    };
+  });
 
-    <label for="taskUrgency">Urgency</label>
-    <select id="taskUrgency">
-      <option value="low">Low</option>
-      <option value="medium">Mid</option>
-      <option value="high">High</option>
-    </select>
+  document.querySelectorAll(".tasks-container .task").forEach((div) => {
+    div.ondragstart = (e) => e.dataTransfer.setData("id", div.dataset.id);
+  });
+}
 
-    <div class="modal-actions">
-      <button id="saveBtn" class="btn-save">Save</button>
-      <button id="cancelBtn" class="btn-cancel">Cancel</button>
-    </div>
-  </div>
-</div>
+/* =========================
+   SEARCH
+========================= */
+function doSearch() {
+  const q = (searchInput?.value || "").trim().toLowerCase();
+  if (!q) return renderTasks();
 
-<script type="module" src="app.js"></script>
+  const filtered = tasks.filter((t) => {
+    return (
+      (t.title && t.title.toLowerCase().includes(q)) ||
+      (t.desc && t.desc.toLowerCase().includes(q)) ||
+      (t.update && t.update.toLowerCase().includes(q)) ||
+      (t.department && String(t.department).toLowerCase().includes(q)) ||
+      (t.owner && String(t.owner).toLowerCase().includes(q)) ||
+      (t.received && String(t.received).includes(q)) ||
+      (t.deadline && String(t.deadline).includes(q)) ||
+      (t.urgency && String(t.urgency).toLowerCase().includes(q))
+    );
+  });
 
-</body>
-</html>
+  renderTasks(filtered);
+}
+
+/* =========================
+   EXPORT CSV (by department)
+   Columns: Title, Description, Update, Department, Received Date, Deadline, Urgency
+========================= */
+function exportToCSV() {
+  if (!tasks.length) return alert("No tasks to export");
+
+  const header = ["Title", "Description", "Update", "Department", "Owner", "Received Date", "Deadline", "Urgency"];
+  const rows = [];
+
+  DEPT_KEYS.forEach((deptKey) => {
+    const deptLabel = KEY_TO_LABEL[deptKey];
+    const group = tasks.filter((t) => normalizeDeptKey(t.department) === deptKey);
+    if (!group.length) return;
+
+    rows.push(`${deptLabel}`);
+    rows.push(header.join(","));
+
+    group.forEach((t) => {
+      const row = [
+        t.title || "",
+        t.desc || "",
+        t.update || "",
+        t.department || deptLabel,
+        t.owner || "",
+        t.received || "",
+        t.deadline || "",
+        t.urgency || "low",
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
+
+      rows.push(row.join(","));
+    });
+
+    rows.push("");
+  });
+
+  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `team_dashboard_${new Date().toISOString().split("T")[0]}.csv`;
+  link.click();
+}
+
+/* =========================
+   HELPERS
+========================= */
+function escapeHTML(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatDate(yyyy_mm_dd) {
+  try {
+    const d = new Date(yyyy_mm_dd + "T00:00:00");
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+  } catch {
+    return yyyy_mm_dd;
+  }
+}
+
+/* =========================
+   EVENTS
+========================= */
+window.onload = async () => {
+  const ok = await requireAuth();
+  if (!ok) return;
+
+  await sbLoadAll();
+  sbSubscribeRealtime();
+  renderTasks();
+  renderArchive();
+};
+
+addTaskBtn?.addEventListener("click", () => openModal(null));
+saveBtn?.addEventListener("click", saveTask);
+cancelBtn?.addEventListener("click", closeModal);
+modal?.addEventListener("click", (e) => {
+  if (e.target === modal) closeModal();
+});
+
+logoutBtn?.addEventListener("click", doLogout);
+
+searchBtn?.addEventListener("click", doSearch);
+clearSearchBtn?.addEventListener("click", () => {
+  if (searchInput) searchInput.value = "";
+  renderTasks();
+});
+searchInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") doSearch();
+});
+
+exportCSVBtn?.addEventListener("click", exportToCSV);
