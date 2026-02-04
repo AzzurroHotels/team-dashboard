@@ -152,11 +152,10 @@
   /* Board spans full width like header */
   .board {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(320px, 1fr);
-  gap: 16px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+  overflow-x: hidden; /* fit to one row */
+  align-items: start;
   padding-bottom: 8px;
 }
 
@@ -253,7 +252,5 @@
   .tasks-container::-webkit-scrollbar-thumb, #archiveList::-webkit-scrollbar-thumb { background:var(--scrollThumb); border-radius:10px; }
 
 
-.column {
-  min-width: 320px;
-  max-width: 360px;
-}
+/* Fit all 7 columns in one row */
+.column { min-width: 0; max-width: none; }
