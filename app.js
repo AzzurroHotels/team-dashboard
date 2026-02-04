@@ -157,6 +157,20 @@ async function sbUpsertAll() {
   }
 }
 
+
+async function sbUpsertOne(table, obj) {
+  if (!isSupabaseConfigured()) return;
+  const row = { id: obj.id, payload: obj };
+  const { error } = await supabase.from(table).upsert([row], { onConflict: "id" });
+  if (error) console.warn("Supabase upsert one failed.", error);
+}
+
+async function sbDeleteOne(table, id) {
+  if (!isSupabaseConfigured()) return;
+  const { error } = await supabase.from(table).delete().eq("id", id);
+  if (error) console.warn("Supabase delete failed.", error);
+}
+
 function persistAll() {
   localStorage.setItem("tasks", JSON.stringify(tasks));
   localStorage.setItem("archive", JSON.stringify(archive));
@@ -321,20 +335,23 @@ function renderTasks(filtered = null) {
       </div>
     `;
 
-    div.querySelector(".archive-btn").onclick = (e) => {
+    div.querySelector(".archive-btn").onclick = async (e) => {
       e.stopPropagation();
       archive.push({ ...t, archivedAt: new Date().toLocaleString() });
       tasks = tasks.filter((x) => x.id !== t.id);
+      await sbUpsertOne(SB_TABLE_ARCHIVE, archive[archive.length - 1]);
+      await sbDeleteOne(SB_TABLE_TASKS, t.id);
       persistAll();
       renderTasks();
       renderArchive();
     };
 
-    div.querySelector(".delete-btn")?.addEventListener("click", (e) => {
+    div.querySelector(".delete-btn")?.addEventListener("click", async (e) => {
       e.stopPropagation();
       if (!isAdmin) return alert("Only admins can delete tasks.");
       if (confirm("Are you sure you want to delete this task?")) {
         tasks = tasks.filter((x) => x.id !== t.id);
+        await sbDeleteOne(SB_TABLE_TASKS, t.id);
         persistAll();
         renderTasks();
       }
@@ -386,21 +403,24 @@ function renderArchive() {
       </div>
     `;
 
-    div.querySelector(".archive-btn").onclick = (e) => {
+    div.querySelector(".archive-btn").onclick = async (e) => {
       e.stopPropagation();
       // Restored task keeps its department
       tasks.push({ ...t });
       archive = archive.filter((x) => x.id !== t.id);
+      await sbUpsertOne(SB_TABLE_TASKS, tasks[tasks.length - 1]);
+      await sbDeleteOne(SB_TABLE_ARCHIVE, t.id);
       persistAll();
       renderTasks();
       renderArchive();
     };
 
-    div.querySelector(".delete-btn")?.addEventListener("click", (e) => {
+    div.querySelector(".delete-btn")?.addEventListener("click", async (e) => {
       e.stopPropagation();
       if (!isAdmin) return alert("Only admins can delete tasks.");
       if (confirm("Are you sure you want to permanently delete this archived task?")) {
         archive = archive.filter((x) => x.id !== t.id);
+        await sbDeleteOne(SB_TABLE_ARCHIVE, t.id);
         persistAll();
         renderArchive();
       }
