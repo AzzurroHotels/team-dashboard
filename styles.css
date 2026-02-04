@@ -153,8 +153,8 @@
   .board {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 10px;
-  overflow-x: hidden;
+  gap: 12px;
+  overflow-x: hidden; /* fit to one row */
   align-items: start;
   padding-bottom: 8px;
 }
@@ -297,4 +297,28 @@
 #exportButtons button {
   padding: 6px 10px;
   font-size: 12px;
+}
+
+/* ==============================
+   HARD GRID OVERRIDES (fix stacked columns)
+   ============================== */
+.board {
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  align-items: start !important;
+  overflow-x: hidden !important;
+}
+
+.board > .column {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  grid-column: auto !important;
+}
+
+.column {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
 }
