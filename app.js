@@ -484,7 +484,7 @@ function doSearch() {
 function exportToCSV() {
   if (!tasks.length) return alert("No tasks to export");
 
-  const header = ["Title", "Description", "Update", "Department", "Owner", "Received Date", "Deadline", "Urgency"];
+  const header = ["Title", "Description", "Update", "Department", "Owner"];
   const rows = [];
 
   DEPT_KEYS.forEach((deptKey) => {
@@ -501,10 +501,7 @@ function exportToCSV() {
         t.desc || "",
         t.update || "",
         t.department || deptLabel,
-        t.owner || "",
-        t.received || "",
-        t.deadline || "",
-        t.urgency || "low",
+        t.owner || ""
       ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
 
       rows.push(row.join(","));
