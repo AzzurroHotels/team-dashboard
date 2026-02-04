@@ -21,93 +21,89 @@ const saveBtn = $("saveBtn");
 const cancelBtn = $("cancelBtn");
 
 const taskTitle = $("taskTitle");
-const taskDesc = $("taskDesc");
+const taskDesc = $("taskDescription");
 const taskUpdate = $("taskUpdate");
-const taskDept = $("taskDept");
+const taskDept = $("taskDepartment");
 const taskOwner = $("taskOwner");
-const taskReceived = $("taskReceived");
+const taskReceived = $("taskReceivedDate");
 const taskDeadline = $("taskDeadline");
 const taskUrgency = $("taskUrgency");
 
 const archiveList = $("archiveList");
 
 /* =========================
+   STATE
+========================= */
+const SB_TABLE_TASKS = "tasks";
+const SB_TABLE_ARCHIVE = "archive";
+const SB_TABLE_ADMINS = "admins";
+
+let tasks = JSON.parse(localStorage.getItem("tasks") || "[]");
+let archive = JSON.parse(localStorage.getItem("archive") || "[]");
+let editId = null;
+let isAdmin = false;
+
+/* =========================
+   HELPERS
+========================= */
+function escapeHTML(str) {
+  return String(str || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function persistAll() {
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+  localStorage.setItem("archive", JSON.stringify(archive));
+}
+
+function formatDate(v) {
+  try {
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return String(v);
+    return d.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
+  } catch {
+    return String(v);
+  }
+}
+
+/* =========================
    AUTH
 ========================= */
 async function requireAuth() {
-  if (!isSupabaseConfigured()) {
-    alert("Supabase is not configured yet. Please paste your URL + anon key in supabase-config.js.");
-    window.location.href = "./index.html";
-    return false;
-  }
+  if (!isSupabaseConfigured()) return true;
+
   const { data } = await supabase.auth.getSession();
   if (!data?.session) {
-    window.location.href = "./index.html";
+    window.location.href = "index.html";
     return false;
   }
   return true;
 }
 
 async function doLogout() {
-  await supabase.auth.signOut();
-  window.location.href = "./index.html";
+  if (isSupabaseConfigured()) {
+    await supabase.auth.signOut();
+  }
+  localStorage.removeItem("tasks");
+  localStorage.removeItem("archive");
+  window.location.href = "index.html";
 }
 
 async function checkAdmin() {
-  try {
-    const { data: userRes } = await supabase.auth.getUser();
-    const uid = userRes?.user?.id;
-    if (!uid) return false;
+  if (!isSupabaseConfigured()) return false;
 
-    const { data, error } = await supabase
-      .from(SB_TABLE_ADMINS)
-      .select("user_id")
-      .eq("user_id", uid)
-      .maybeSingle();
+  const { data } = await supabase.auth.getUser();
+  const userId = data?.user?.id;
+  if (!userId) return false;
 
-    if (error) return false;
-    return !!data;
-  } catch {
-    return false;
-  }
+  const { data: rows, error } = await supabase.from(SB_TABLE_ADMINS).select("user_id").eq("user_id", userId).maybeSingle();
+  if (error) return false;
+  return !!rows?.user_id;
 }
-
-
-/* =========================
-   THEME (persisted)
-========================= */
-function applyTheme(mode) {
-  if (mode === "dark") {
-    document.body.classList.add("dark");
-    themeSwitch.checked = true;
-  } else {
-    document.body.classList.remove("dark");
-    themeSwitch.checked = false;
-  }
-  localStorage.setItem("pm_theme", mode);
-}
-
-(function initTheme() {
-  const saved = localStorage.getItem("pm_theme");
-  applyTheme(saved || "light");
-})();
-
-themeSwitch?.addEventListener("change", () => {
-  applyTheme(themeSwitch.checked ? "dark" : "light");
-});
-
-/* =========================
-   DATA
-========================= */
-let tasks = JSON.parse(localStorage.getItem("tasks") || "[]");
-let archive = JSON.parse(localStorage.getItem("archive") || "[]");
-let editId = null;
-
-const SB_TABLE_TASKS = "tasks";
-const SB_TABLE_ARCHIVE = "archive";
-const SB_TABLE_ADMINS = "admins";
-
-let isAdmin = false;
 
 /* =========================
    SUPABASE LOAD/SAVE
@@ -135,7 +131,6 @@ async function sbLoadAll() {
 
 let sbSaveTimer = null;
 function sbScheduleSave() {
-  // Debounce to avoid spamming on drag/drop
   clearTimeout(sbSaveTimer);
   sbSaveTimer = setTimeout(() => sbUpsertAll(), 250);
 }
@@ -153,34 +148,23 @@ async function sbUpsertAll() {
 
   if (tUp.error || aUp.error) {
     console.warn("Supabase upsert failed.", tUp.error || aUp.error);
-    return;
   }
 }
 
-
-async function sbUpsertOne(table, obj) {
+async function sbUpsertOne(table, payloadObj) {
   if (!isSupabaseConfigured()) return;
-  const row = { id: obj.id, payload: obj };
-  const { error } = await supabase.from(table).upsert([row], { onConflict: "id" });
-  if (error) console.warn("Supabase upsert one failed.", error);
+  await supabase.from(table).upsert({ id: payloadObj.id, payload: payloadObj }, { onConflict: "id" });
 }
 
 async function sbDeleteOne(table, id) {
   if (!isSupabaseConfigured()) return;
-  const { error } = await supabase.from(table).delete().eq("id", id);
-  if (error) console.warn("Supabase delete failed.", error);
-}
-
-function persistAll() {
-  localStorage.setItem("tasks", JSON.stringify(tasks));
-  localStorage.setItem("archive", JSON.stringify(archive));
-  sbScheduleSave();
+  await supabase.from(table).delete().eq("id", id);
 }
 
 /* =========================
-   REALTIME (EVERYONE SEES UPDATES)
+   REALTIME
 ========================= */
-function sbSubscribeRealtime() {
+function enableRealtime() {
   if (!isSupabaseConfigured()) return;
 
   const ch = supabase.channel("pmtool-realtime");
@@ -237,18 +221,17 @@ function closeModal() {
 }
 
 function saveTask() {
-  if (!taskTitle.value.trim()) return alert("Title required");
-
   const payload = {
-    title: taskTitle.value.trim(),
+    title: taskTitle.value || "",
     desc: taskDesc.value || "",
     update: taskUpdate.value || "",
     department: taskDept.value || "Admin",
-    owner: (taskOwner?.value || ""),
-    status: (currentTask?.status || ""),
+    owner: taskOwner ? (taskOwner.value || "") : "",
     received: taskReceived.value || "",
     deadline: taskDeadline.value || "",
     urgency: taskUrgency.value || "low",
+    // ✅ IMPORTANT: preserve status when editing so Done tasks don't disappear
+    status: editId ? (tasks.find((t) => t.id === editId)?.status || "") : "",
   };
 
   if (editId) {
@@ -258,6 +241,7 @@ function saveTask() {
   }
 
   persistAll();
+  sbScheduleSave();
   closeModal();
   renderTasks();
 }
@@ -266,8 +250,9 @@ function saveTask() {
    RENDERING
 ========================= */
 const DEPT_KEYS = ["admin", "workforce", "compliance", "complaints", "acquisition", "teletrim"];
+const DONE_KEY = "done";
 
-function isDoneTask(t){
+function isDoneTask(t) {
   return String(t?.status || "").toLowerCase() === "done";
 }
 
@@ -301,7 +286,6 @@ function renderTasks(filtered = null) {
 
   const list = filtered || tasks;
 
-  // Column counts
   updateColumnCounts(list);
 
   list.forEach((t) => {
@@ -312,7 +296,11 @@ function renderTasks(filtered = null) {
     if (!t.department && t.assignedTo) t.department = t.assignedTo;
 
     const deptKey = normalizeDeptKey(t.department);
-    const col = document.querySelector(`[data-dept="${deptKey}"] .tasks-container`);
+
+    // ✅ FIX: Done tasks render into Done column, but keep department untouched
+    const targetKey = isDoneTask(t) ? DONE_KEY : deptKey;
+
+    const col = document.querySelector(`[data-dept="${targetKey}"] .tasks-container`);
     if (!col) return;
 
     const div = document.createElement("div");
@@ -345,8 +333,10 @@ function renderTasks(filtered = null) {
       e.stopPropagation();
       archive.push({ ...t, archivedAt: new Date().toLocaleString() });
       tasks = tasks.filter((x) => x.id !== t.id);
+
       await sbUpsertOne(SB_TABLE_ARCHIVE, archive[archive.length - 1]);
       await sbDeleteOne(SB_TABLE_TASKS, t.id);
+
       persistAll();
       renderTasks();
       renderArchive();
@@ -373,14 +363,21 @@ function renderTasks(filtered = null) {
 
 function updateColumnCounts(list) {
   document.querySelectorAll(".column").forEach((col) => {
-    const deptKey = normalizeDeptKey(col.dataset.dept);
+    const rawKey = String(col.dataset.dept || "").toLowerCase();
+    const deptKey = rawKey === DONE_KEY ? DONE_KEY : normalizeDeptKey(rawKey);
+
     const title = col.querySelector(".title");
     if (!title) return;
 
     const baseTitle = title.dataset.base || title.textContent.replace(/\(\d+\)$/g, "").trim();
     title.dataset.base = baseTitle;
 
-    const count = list.filter((t) => normalizeDeptKey(t.department) === deptKey).length;
+    // ✅ FIX: Done count uses status, department counts exclude done
+    const count =
+      deptKey === DONE_KEY
+        ? list.filter((t) => isDoneTask(t)).length
+        : list.filter((t) => !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey).length;
+
     title.textContent = `${baseTitle} (${count})`;
   });
 }
@@ -389,55 +386,23 @@ function renderArchive() {
   archiveList.innerHTML = archive.length ? "" : "<p>No archived tasks</p>";
 
   archive.forEach((t) => {
-    // Back-compat
     if (!t.deadline && t.due) t.deadline = t.due;
 
     const div = document.createElement("div");
-    div.className = "task";
-
-    const dueText = t.deadline ? formatDate(t.deadline) : "No deadline";
-    const dueClass = t.deadline ? "task-due" : "task-due missing";
-
+    div.className = "archive-item";
     div.innerHTML = `
-      <div class="task-top">
-        <div class="task-title">${escapeHTML(t.title)}</div>
-        <div class="${dueClass}">${escapeHTML(dueText)}</div>
-      </div>
-      <div class="task-actions">
-        <button class="archive-btn">Restore</button>
-        ${isAdmin ? `<button class="delete-btn">Delete</button>` : ``}
+      <div class="archive-title">${escapeHTML(t.title)}</div>
+      <div class="archive-meta">
+        <span>${escapeHTML(t.department || "")}</span>
+        <span>${escapeHTML(t.archivedAt || "")}</span>
       </div>
     `;
-
-    div.querySelector(".archive-btn").onclick = async (e) => {
-      e.stopPropagation();
-      // Restored task keeps its department
-      tasks.push({ ...t });
-      archive = archive.filter((x) => x.id !== t.id);
-      await sbUpsertOne(SB_TABLE_TASKS, tasks[tasks.length - 1]);
-      await sbDeleteOne(SB_TABLE_ARCHIVE, t.id);
-      persistAll();
-      renderTasks();
-      renderArchive();
-    };
-
-    div.querySelector(".delete-btn")?.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      if (!isAdmin) return alert("Only admins can delete tasks.");
-      if (confirm("Are you sure you want to permanently delete this archived task?")) {
-        archive = archive.filter((x) => x.id !== t.id);
-        await sbDeleteOne(SB_TABLE_ARCHIVE, t.id);
-        persistAll();
-        renderArchive();
-      }
-    });
-
     archiveList.appendChild(div);
   });
 }
 
 /* =========================
-   DRAG & DROP (department move)
+   DRAG & DROP
 ========================= */
 function enableDragAndDrop() {
   document.querySelectorAll(".tasks-container").forEach((col) => {
@@ -447,10 +412,20 @@ function enableDragAndDrop() {
       const t = tasks.find((x) => x.id === id);
       if (!t) return;
 
-      const deptKey = normalizeDeptKey(col.parentElement.dataset.dept);
-      t.department = keyToLabel(deptKey);
+      const rawKey = String(col.parentElement?.dataset?.dept || "").toLowerCase();
+
+      // ✅ FIX: dropping into Done sets status only (keeps department)
+      if (rawKey === DONE_KEY) {
+        t.status = "done";
+      } else {
+        // leaving Done or moving between departments
+        t.status = "";
+        const deptKey = normalizeDeptKey(rawKey);
+        t.department = keyToLabel(deptKey);
+      }
 
       persistAll();
+      sbScheduleSave();
       renderTasks();
     };
   });
@@ -484,8 +459,8 @@ function doSearch() {
 }
 
 /* =========================
-   EXPORT CSV (by department)
-   Columns: Title, Description, Update, Department, Received Date, Deadline, Urgency
+   EXPORT CSV
+   Title | Description | Update | Department | Owner
 ========================= */
 function exportToCSV() {
   if (!tasks.length) return alert("No tasks to export");
@@ -495,86 +470,94 @@ function exportToCSV() {
 
   DEPT_KEYS.forEach((deptKey) => {
     const deptLabel = KEY_TO_LABEL[deptKey];
-    const group = tasks.filter((t) => normalizeDeptKey(t.department) === deptKey);
+    const group = tasks.filter((t) => !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey);
     if (!group.length) return;
 
     rows.push(`${deptLabel}`);
     rows.push(header.join(","));
 
     group.forEach((t) => {
-      const row = [
-        t.title || "",
-        t.desc || "",
-        t.update || "",
-        t.department || deptLabel,
-        t.owner || ""
-      ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
-
+      const row = [t.title || "", t.desc || "", t.update || "", t.department || deptLabel, t.owner || ""].map(
+        (v) => `"${String(v).replace(/"/g, '""')}"`
+      );
       rows.push(row.join(","));
     });
 
     rows.push("");
   });
 
+  // ✅ Include Done tasks as a separate section
+  const doneTasks = tasks.filter((t) => isDoneTask(t));
+  if (doneTasks.length) {
+    rows.push("Done");
+    rows.push(header.join(","));
+    doneTasks.forEach((t) => {
+      const row = [t.title || "", t.desc || "", t.update || "", t.department || "", t.owner || ""].map(
+        (v) => `"${String(v).replace(/"/g, '""')}"`
+      );
+      rows.push(row.join(","));
+    });
+    rows.push("");
+  }
+
   const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `team_dashboard_${new Date().toISOString().split("T")[0]}.csv`;
+  link.download = "tasks.csv";
   link.click();
 }
 
 /* =========================
-   HELPERS
+   THEME
 ========================= */
-function escapeHTML(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function loadTheme() {
+  const mode = localStorage.getItem("theme") || "light";
+  document.body.classList.toggle("dark", mode === "dark");
+  if (themeSwitch) themeSwitch.checked = mode === "dark";
 }
 
-function formatDate(yyyy_mm_dd) {
-  try {
-    const d = new Date(yyyy_mm_dd + "T00:00:00");
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
-  } catch {
-    return yyyy_mm_dd;
-  }
+function toggleTheme() {
+  const isDark = !!themeSwitch?.checked;
+  document.body.classList.toggle("dark", isDark);
+  localStorage.setItem("theme", isDark ? "dark" : "light");
 }
 
 /* =========================
-   EVENTS
+   INIT
 ========================= */
-window.onload = async () => {
-  const ok = await requireAuth();
-  if (!ok) return;
+async function init() {
+  loadTheme();
+
+  if (!(await requireAuth())) return;
 
   isAdmin = await checkAdmin();
 
+  // Initial load
   await sbLoadAll();
-  sbSubscribeRealtime();
   renderTasks();
   renderArchive();
-};
 
-addTaskBtn?.addEventListener("click", () => openModal(null));
-saveBtn?.addEventListener("click", saveTask);
-cancelBtn?.addEventListener("click", closeModal);
-modal?.addEventListener("click", (e) => {
-  if (e.target === modal) closeModal();
-});
+  enableRealtime();
 
-logoutBtn?.addEventListener("click", doLogout);
+  // Buttons
+  searchBtn?.addEventListener("click", doSearch);
+  clearSearchBtn?.addEventListener("click", () => {
+    if (searchInput) searchInput.value = "";
+    renderTasks();
+  });
 
-searchBtn?.addEventListener("click", doSearch);
-clearSearchBtn?.addEventListener("click", () => {
-  if (searchInput) searchInput.value = "";
-  renderTasks();
-});
-searchInput?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") doSearch();
-});
+  exportCSVBtn?.addEventListener("click", exportToCSV);
+  addTaskBtn?.addEventListener("click", () => openModal(null));
+  logoutBtn?.addEventListener("click", doLogout);
 
-exportCSVBtn?.addEventListener("click", exportToCSV);
+  themeSwitch?.addEventListener("change", toggleTheme);
+
+  saveBtn?.addEventListener("click", saveTask);
+  cancelBtn?.addEventListener("click", closeModal);
+
+  window.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+}
+
+init();
