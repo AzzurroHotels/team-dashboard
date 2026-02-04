@@ -254,3 +254,47 @@
 
 /* Fit all 7 columns in one row */
 .column { min-width: 0; max-width: none; }
+
+
+/* ==============================
+   COMPACT MODE (7 columns in 1 row)
+   Keeps layout intact, reduces padding/font so columns fit.
+   ============================== */
+.board {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.column {
+  padding: 10px;
+}
+
+.column h3 {
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.task {
+  padding: 10px;
+}
+
+.task .task-title {
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.task .task-date,
+.task .no-deadline {
+  font-size: 11px;
+}
+
+.task button,
+.task .btn {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+#exportButtons button {
+  padding: 6px 10px;
+  font-size: 12px;
+}
