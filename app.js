@@ -238,7 +238,6 @@ function openModal(id = null) {
     // - textarea is for NEW update entry only
     // - existing updates are preserved in data and shown after save (by opening again)
     taskUpdate.value = "";
-    renderUpdateHistory("");
     taskDept.value = t.department || "Admin";
     if (taskOwner) taskOwner.value = t.owner || "";
     taskReceived.value = t.received || "";
@@ -262,49 +261,6 @@ function closeModal() {
 }
 
 
-function ensureUpdateHistoryEl() {
-  // Creates a read-only update history panel under the Update textarea (inside the modal)
-  const content = modal?.querySelector(".modal-content");
-  if (!content) return null;
-
-  let panel = document.getElementById("updateHistory");
-  if (!panel) {
-    panel = document.createElement("div");
-    panel.id = "updateHistory";
-    panel.style.marginTop = "8px";
-    panel.style.padding = "10px";
-    panel.style.border = "1px solid #e5e7eb";
-    panel.style.borderRadius = "10px";
-    panel.style.maxHeight = "140px";
-    panel.style.overflow = "auto";
-    panel.style.background = "#fff";
-    panel.style.fontSize = "13px";
-    panel.style.whiteSpace = "pre-wrap";
-    panel.style.display = "none";
-
-    // Insert right after taskUpdate textarea if possible
-    const updateEl = taskUpdate;
-    if (updateEl && updateEl.insertAdjacentElement) {
-      updateEl.insertAdjacentElement("afterend", panel);
-    } else {
-      content.appendChild(panel);
-    }
-  }
-  return panel;
-}
-
-function renderUpdateHistory(text) {
-  const panel = ensureUpdateHistoryEl();
-  if (!panel) return;
-  const val = String(text || "").trim();
-  if (!val) {
-    panel.style.display = "none";
-    panel.textContent = "";
-    return;
-  }
-  panel.style.display = "block";
-  panel.textContent = val;
-}
 
 
 function saveTask() {
@@ -314,17 +270,44 @@ function saveTask() {
     return;
   }
 
-  const newUpdate = (taskUpdate.value || "").trim();
   const timestamp = new Date().toLocaleString();
 
   const prevUpdate = editId
     ? (tasks.find((t) => t.id === editId)?.update || "")
     : "";
 
-  // ✅ Prepend the new update with a timestamp, keep older updates below
-  const combinedUpdate = newUpdate
-    ? `${timestamp} – ${newUpdate}${prevUpdate ? "\n\n" + prevUpdate : ""}`
-    : prevUpdate;
+  const currentText = String(taskUpdate.value || "").trim();
+
+  // ✅ User wants update history shown in the Update textarea.
+  // Workflow supported:
+  // - Modal loads full history into textarea
+  // - User types NEW text at the TOP, keeping previous history below
+  // - If textarea still ends with the previous history, we treat the top part as the "new update"
+  //   and prepend it with a timestamp automatically.
+  // - If user edited the history in other ways, we save the textarea as-is.
+  let combinedUpdate = prevUpdate;
+
+  if (editId && prevUpdate) {
+    const prevTrim = prevUpdate.trim();
+    const currentTrim = currentText;
+
+    if (currentTrim === prevTrim) {
+      combinedUpdate = prevUpdate; // no change
+    } else if (currentTrim.endsWith(prevTrim)) {
+      const newPart = currentTrim.slice(0, currentTrim.length - prevTrim.length).trim();
+      combinedUpdate = newPart
+        ? `${timestamp} – ${newPart}
+
+${prevUpdate}`
+        : prevUpdate;
+    } else {
+      // User edited the log freely; keep exactly what they typed
+      combinedUpdate = currentText;
+    }
+  } else {
+    // New task or no previous updates: save whatever is in the textarea; if not empty, timestamp it
+    combinedUpdate = currentText ? `${timestamp} – ${currentText}` : "";
+  }
 
   const payload = {
     title,
@@ -349,9 +332,7 @@ function saveTask() {
 
   persistAll();
   sbScheduleSave();
-  taskUpdate.value = "";
-  // Update the on-screen history panel immediately (no refresh needed)
-  renderUpdateHistory(combinedUpdate);
+  taskUpdate.value = combinedUpdate;
   closeModal();
   renderTasks();
   renderArchive();
