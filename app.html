@@ -7,84 +7,81 @@
 </head>
 <body>
 
-  <!-- HEADER -->
-  <header>
-    <div class="header-left">
-      <h1>Team Dashboard</h1>
-    </div>
-
-    <div class="header-actions">
-      <input id="searchInput" type="text" placeholder="Search tasks..." />
-      <button id="searchBtn">Search</button>
-      <button id="clearSearch">Clear</button>
-
-      <div class="theme-toggle">
-        <span>Light</span>
-        <label class="switch">
-          <input type="checkbox" id="themeToggle">
-          <span class="slider"></span>
-        </label>
-        <span>Dark</span>
-      </div>
-
-      <button id="logoutBtn">Logout</button>
-    </div>
-  </header>
-
-  <!-- TOP ACTION BUTTONS -->
-  <div id="exportButtons">
-    <button id="exportCSV">Export CSV</button>
-    <button id="globalAddTask">+ Add Task</button>
+<header>
+  <div class="header-left">
+    <h1>Team Dashboard</h1>
   </div>
 
-  <!-- MAIN BOARD -->
-  <div class="board">
+  <div class="header-actions">
+    <input id="searchInput" type="text" placeholder="Search tasks..." />
+    <button id="searchBtn">Search</button>
+    <button id="clearSearch">Clear</button>
 
-    <div class="column" data-dept="admin">
-      <h3>Admin (<span class="count">0</span>)</h3>
-      <div class="tasks-container"></div>
+    <div class="theme-toggle">
+      <span>Light</span>
+      <label class="switch">
+        <input type="checkbox" id="themeToggle">
+        <span class="slider"></span>
+      </label>
+      <span>Dark</span>
     </div>
 
-    <div class="column" data-dept="workforce">
-      <h3>Workforce (<span class="count">0</span>)</h3>
-      <div class="tasks-container"></div>
-    </div>
+    <button id="logoutBtn">Logout</button>
+  </div>
+</header>
 
-    <div class="column" data-dept="compliance">
-      <h3>Compliance (<span class="count">0</span>)</h3>
-      <div class="tasks-container"></div>
-    </div>
+<div id="exportButtons">
+  <button id="exportCSV">Export CSV</button>
+  <button id="globalAddTask">+ Add Task</button>
+</div>
 
-    <div class="column" data-dept="complaints">
-      <h3>Complaints (<span class="count">0</span>)</h3>
-      <div class="tasks-container"></div>
-    </div>
+<!-- BOARD -->
+<div class="board">
 
-    <div class="column" data-dept="acquisition">
-      <h3>Acquisition (<span class="count">0</span>)</h3>
-      <div class="tasks-container"></div>
-    </div>
-
-    <div class="column" data-dept="teletrim">
-      <h3>Teletrim (<span class="count">0</span>)</h3>
-      <div class="tasks-container"></div>
-    </div>
-
-    <!-- ✅ DONE COLUMN MUST BE INSIDE .board -->
-    <div class="column" data-dept="done">
-      <h3>Done (<span class="count">0</span>)</h3>
-      <div class="tasks-container"></div>
-    </div>
-
+  <div class="column" data-dept="admin">
+    <h3>Admin (<span class="count">0</span>)</h3>
+    <div class="tasks-container"></div>
   </div>
 
-  <!-- ARCHIVED -->
-  <section class="archived-section">
-    <h2>Archived Tasks</h2>
-    <div id="archivedTasks">No archived tasks</div>
-  </section>
+  <div class="column" data-dept="workforce">
+    <h3>Workforce (<span class="count">0</span>)</h3>
+    <div class="tasks-container"></div>
+  </div>
 
-  <script src="supabase-config.js"></script>
-  <script src="app.js"></script>
+  <div class="column" data-dept="compliance">
+    <h3>Compliance (<span class="count">0</span>)</h3>
+    <div class="tasks-container"></div>
+  </div>
+
+  <div class="column" data-dept="complaints">
+    <h3>Complaints (<span class="count">0</span>)</h3>
+    <div class="tasks-container"></div>
+  </div>
+
+  <div class="column" data-dept="acquisition">
+    <h3>Acquisition (<span class="count">0</span>)</h3>
+    <div class="tasks-container"></div>
+  </div>
+
+  <div class="column" data-dept="teletrim">
+    <h3>Teletrim (<span class="count">0</span>)</h3>
+    <div class="tasks-container"></div>
+  </div>
+
+  <!-- DONE COLUMN AS SIBLING -->
+  <div class="column" data-dept="done">
+    <h3>Done (<span class="count">0</span>)</h3>
+    <div class="tasks-container"></div>
+  </div>
+
+</div>
+
+<section class="archived-section">
+  <h2>Archived Tasks</h2>
+  <div id="archivedTasks">No archived tasks</div>
+</section>
+
+<script src="supabase-config.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
