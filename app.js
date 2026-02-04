@@ -20,13 +20,13 @@ const modal = $("taskModal");
 const saveBtn = $("saveBtn");
 const cancelBtn = $("cancelBtn");
 
-// ✅ FIX: these IDs MUST match app.html
+// ✅ MUST match app.html
 const taskTitle = $("taskTitle");
-const taskDesc = $("taskDesc");          // was taskDescription (wrong)
+const taskDesc = $("taskDesc");
 const taskUpdate = $("taskUpdate");
-const taskDept = $("taskDept");          // was taskDepartment (wrong)
-const taskOwner = $("taskOwner");        // optional (not in your HTML right now)
-const taskReceived = $("taskReceived");  // was taskReceivedDate (wrong)
+const taskDept = $("taskDept");
+const taskOwner = $("taskOwner"); // now exists after app.html update
+const taskReceived = $("taskReceived");
 const taskDeadline = $("taskDeadline");
 const taskUrgency = $("taskUrgency");
 
@@ -43,6 +43,9 @@ let tasks = JSON.parse(localStorage.getItem("tasks") || "[]");
 let archive = JSON.parse(localStorage.getItem("archive") || "[]");
 let editId = null;
 let isAdmin = false;
+
+// ✅ Drag guard
+let isDragging = false;
 
 /* =========================
    HELPERS
@@ -65,11 +68,7 @@ function formatDate(v) {
   try {
     const d = new Date(v);
     if (Number.isNaN(d.getTime())) return String(v);
-    return d.toLocaleDateString(undefined, {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-    });
+    return d.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
   } catch {
     return String(v);
   }
@@ -121,20 +120,13 @@ async function checkAdmin() {
 async function sbLoadAll() {
   if (!isSupabaseConfigured()) return false;
 
-  const [{ data: tData, error: tErr }, { data: aData, error: aErr }] =
-    await Promise.all([
-      supabase.from(SB_TABLE_TASKS).select("*").order("id", { ascending: true }),
-      supabase
-        .from(SB_TABLE_ARCHIVE)
-        .select("*")
-        .order("id", { ascending: true }),
-    ]);
+  const [{ data: tData, error: tErr }, { data: aData, error: aErr }] = await Promise.all([
+    supabase.from(SB_TABLE_TASKS).select("*").order("id", { ascending: true }),
+    supabase.from(SB_TABLE_ARCHIVE).select("*").order("id", { ascending: true }),
+  ]);
 
   if (tErr || aErr) {
-    console.warn(
-      "Supabase load failed; falling back to localStorage.",
-      tErr || aErr
-    );
+    console.warn("Supabase load failed; falling back to localStorage.", tErr || aErr);
     return false;
   }
 
@@ -170,9 +162,7 @@ async function sbUpsertAll() {
 
 async function sbUpsertOne(table, payloadObj) {
   if (!isSupabaseConfigured()) return;
-  await supabase
-    .from(table)
-    .upsert({ id: payloadObj.id, payload: payloadObj }, { onConflict: "id" });
+  await supabase.from(table).upsert({ id: payloadObj.id, payload: payloadObj }, { onConflict: "id" });
 }
 
 async function sbDeleteOne(table, id) {
@@ -188,25 +178,17 @@ function enableRealtime() {
 
   const ch = supabase.channel("pmtool-realtime");
 
-  ch.on(
-    "postgres_changes",
-    { event: "*", schema: "public", table: SB_TABLE_TASKS },
-    async () => {
-      await sbLoadAll();
-      renderTasks();
-      renderArchive();
-    }
-  );
+  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_TASKS }, async () => {
+    await sbLoadAll();
+    renderTasks();
+    renderArchive();
+  });
 
-  ch.on(
-    "postgres_changes",
-    { event: "*", schema: "public", table: SB_TABLE_ARCHIVE },
-    async () => {
-      await sbLoadAll();
-      renderTasks();
-      renderArchive();
-    }
-  );
+  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_ARCHIVE }, async () => {
+    await sbLoadAll();
+    renderTasks();
+    renderArchive();
+  });
 
   ch.subscribe();
 }
@@ -217,14 +199,6 @@ function enableRealtime() {
 function openModal(id = null) {
   editId = id;
   modal.style.display = "flex";
-
-  // ✅ Defensive: if your HTML ever changes, fail loudly instead of “Save not working”
-  if (!taskTitle || !taskDesc || !taskDept || !taskReceived || !taskDeadline || !taskUrgency) {
-    alert(
-      "Form fields not found. Please make sure app.html field IDs match app.js (taskTitle, taskDesc, taskDept, taskReceived, taskDeadline, taskUrgency)."
-    );
-    return;
-  }
 
   if (id) {
     const t = tasks.find((x) => x.id === id);
@@ -256,19 +230,8 @@ function closeModal() {
 }
 
 function saveTask() {
-  // ✅ Defensive: prevent silent crashes
-  if (!taskTitle || !taskDesc || !taskDept || !taskReceived || !taskDeadline || !taskUrgency) {
-    alert(
-      "Save failed: missing form fields. Ensure app.html IDs match app.js (taskDesc/taskDept/taskReceived)."
-    );
-    return;
-  }
-
   const title = (taskTitle.value || "").trim();
-  if (!title) {
-    alert("Please enter a Title.");
-    return;
-  }
+  if (!title) return alert("Please enter a Title.");
 
   const payload = {
     title,
@@ -279,14 +242,12 @@ function saveTask() {
     received: taskReceived.value || "",
     deadline: taskDeadline.value || "",
     urgency: taskUrgency.value || "low",
-    // ✅ preserve status when editing so Done tasks don't disappear
+    // preserve status on edit
     status: editId ? (tasks.find((t) => t.id === editId)?.status || "") : "",
   };
 
   if (editId) {
-    const target = tasks.find((t) => t.id === editId);
-    if (!target) return;
-    Object.assign(target, payload);
+    Object.assign(tasks.find((t) => t.id === editId), payload);
   } else {
     tasks.push({ id: Date.now(), ...payload });
   }
@@ -315,10 +276,7 @@ const KEY_TO_LABEL = {
   acquisition: "Acquisition",
   teletrim: "Teletrim",
 };
-
-const LABEL_TO_KEY = Object.fromEntries(
-  Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k])
-);
+const LABEL_TO_KEY = Object.fromEntries(Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k]));
 
 function normalizeDeptKey(v) {
   const s = String(v || "").trim();
@@ -350,8 +308,6 @@ function renderTasks(filtered = null) {
     if (!t.department && t.assignedTo) t.department = t.assignedTo;
 
     const deptKey = normalizeDeptKey(t.department);
-
-    // Done tasks render into Done column (department unchanged)
     const targetKey = isDoneTask(t) ? DONE_KEY : deptKey;
 
     const col = document.querySelector(`[data-dept="${targetKey}"] .tasks-container`);
@@ -407,7 +363,19 @@ function renderTasks(filtered = null) {
       }
     });
 
-    div.onclick = () => openModal(t.id);
+    // ✅ DRAG GUARD: don't open modal if you're dragging
+    div.addEventListener("dragstart", (e) => {
+      isDragging = true;
+      e.dataTransfer.setData("id", div.dataset.id);
+    });
+    div.addEventListener("dragend", () => {
+      setTimeout(() => (isDragging = false), 0);
+    });
+
+    div.addEventListener("click", () => {
+      if (isDragging) return;
+      openModal(t.id);
+    });
 
     col.appendChild(div);
   });
@@ -465,13 +433,13 @@ function enableDragAndDrop() {
       const t = tasks.find((x) => x.id === id);
       if (!t) return;
 
-      const rawKey = String(col.parentElement?.dataset?.dept || "").toLowerCase();
+      // ✅ use closest column, not parentElement assumptions
+      const columnEl = col.closest(".column");
+      const rawKey = String(columnEl?.dataset?.dept || "").toLowerCase();
 
-      // dropping into Done sets status only (keeps department)
       if (rawKey === DONE_KEY) {
         t.status = "done";
       } else {
-        // leaving Done or moving between departments
         t.status = "";
         const deptKey = normalizeDeptKey(rawKey);
         t.department = keyToLabel(deptKey);
@@ -481,10 +449,6 @@ function enableDragAndDrop() {
       sbScheduleSave();
       renderTasks();
     };
-  });
-
-  document.querySelectorAll(".tasks-container .task").forEach((div) => {
-    div.ondragstart = (e) => e.dataTransfer.setData("id", div.dataset.id);
   });
 }
 
