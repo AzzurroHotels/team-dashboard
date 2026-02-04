@@ -1,8 +1,11 @@
-// app.js (FULL FIXED VERSION)
-// - Fixes modal field IDs to match app.html
-// - Keeps board features (render, drag/drop, realtime, export)
-// - Adds Archive Restore + Delete buttons
-// - Makes "Update" behave like an update log (new entries prepend with timestamp)
+// app.js (FINAL - fast load + updates visible in textarea + safe logging)
+// Notes:
+// - Fast initial render from localStorage (no waiting for Supabase)
+// - Update textarea shows full update history
+// - Save supports two workflows:
+//   A) Type ONLY the new update (textarea contains just new text) -> it will be timestamped + prepended to old history
+//   B) Type the new update at the TOP and keep old history below -> it will timestamp just the new top part
+//   If user freely edits the log, we save exactly what they typed.
 
 import { supabase, isSupabaseConfigured } from "./supabase-config.js";
 
@@ -129,21 +132,12 @@ async function sbLoadAll() {
 
   const [{ data: tData, error: tErr }, { data: aData, error: aErr }] =
     await Promise.all([
-      supabase
-        .from(SB_TABLE_TASKS)
-        .select("*")
-        .order("id", { ascending: true }),
-      supabase
-        .from(SB_TABLE_ARCHIVE)
-        .select("*")
-        .order("id", { ascending: true }),
+      supabase.from(SB_TABLE_TASKS).select("*").order("id", { ascending: true }),
+      supabase.from(SB_TABLE_ARCHIVE).select("*").order("id", { ascending: true }),
     ]);
 
   if (tErr || aErr) {
-    console.warn(
-      "Supabase load failed; falling back to localStorage.",
-      tErr || aErr
-    );
+    console.warn("Supabase load failed; using localStorage.", tErr || aErr);
     return false;
   }
 
@@ -192,30 +186,25 @@ async function sbDeleteOne(table, id) {
 /* =========================
    REALTIME
 ========================= */
+let realtimeEnabled = false;
 function enableRealtime() {
+  if (realtimeEnabled) return;
   if (!isSupabaseConfigured()) return;
 
+  realtimeEnabled = true;
   const ch = supabase.channel("pmtool-realtime");
 
-  ch.on(
-    "postgres_changes",
-    { event: "*", schema: "public", table: SB_TABLE_TASKS },
-    async () => {
-      await sbLoadAll();
-      renderTasks();
-      renderArchive();
-    }
-  );
+  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_TASKS }, async () => {
+    await sbLoadAll();
+    renderTasks();
+    renderArchive();
+  });
 
-  ch.on(
-    "postgres_changes",
-    { event: "*", schema: "public", table: SB_TABLE_ARCHIVE },
-    async () => {
-      await sbLoadAll();
-      renderTasks();
-      renderArchive();
-    }
-  );
+  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_ARCHIVE }, async () => {
+    await sbLoadAll();
+    renderTasks();
+    renderArchive();
+  });
 
   ch.subscribe();
 }
@@ -234,10 +223,9 @@ function openModal(id = null) {
     taskTitle.value = t.title || "";
     taskDesc.value = t.desc || "";
 
-    // ✅ Update log behavior:
-    // - textarea is for NEW update entry only
-    // - existing updates are preserved in data and shown after save (by opening again)
-    taskUpdate.value = "";
+    // ✅ Show full update history INSIDE the textarea
+    taskUpdate.value = t.update || "";
+
     taskDept.value = t.department || "Admin";
     if (taskOwner) taskOwner.value = t.owner || "";
     taskReceived.value = t.received || "";
@@ -260,9 +248,6 @@ function closeModal() {
   editId = null;
 }
 
-
-
-
 function saveTask() {
   const title = (taskTitle.value || "").trim();
   if (!title) {
@@ -272,41 +257,37 @@ function saveTask() {
 
   const timestamp = new Date().toLocaleString();
 
-  const prevUpdate = editId
-    ? (tasks.find((t) => t.id === editId)?.update || "")
-    : "";
+  const prevUpdate = editId ? (tasks.find((t) => t.id === editId)?.update || "") : "";
+  const prevTrim = String(prevUpdate || "").trim();
 
   const currentText = String(taskUpdate.value || "").trim();
 
-  // ✅ User wants update history shown in the Update textarea.
-  // Workflow supported:
-  // - Modal loads full history into textarea
-  // - User types NEW text at the TOP, keeping previous history below
-  // - If textarea still ends with the previous history, we treat the top part as the "new update"
-  //   and prepend it with a timestamp automatically.
-  // - If user edited the history in other ways, we save the textarea as-is.
+  // Decide how to store the update log
   let combinedUpdate = prevUpdate;
 
-  if (editId && prevUpdate) {
-    const prevTrim = prevUpdate.trim();
-    const currentTrim = currentText;
-
-    if (currentTrim === prevTrim) {
-      combinedUpdate = prevUpdate; // no change
-    } else if (currentTrim.endsWith(prevTrim)) {
-      const newPart = currentTrim.slice(0, currentTrim.length - prevTrim.length).trim();
-      combinedUpdate = newPart
-        ? `${timestamp} – ${newPart}
-
-${prevUpdate}`
-        : prevUpdate;
+  if (!editId) {
+    // New task: if update text provided, timestamp it
+    combinedUpdate = currentText ? `${timestamp} – ${currentText}` : "";
+  } else {
+    if (!currentText) {
+      combinedUpdate = ""; // user cleared it intentionally
+    } else if (!prevTrim) {
+      // no previous history: timestamp whatever they typed
+      combinedUpdate = `${timestamp} – ${currentText}`;
+    } else if (currentText === prevTrim) {
+      // unchanged
+      combinedUpdate = prevUpdate;
+    } else if (currentText.endsWith(prevTrim)) {
+      // User kept old history at bottom and typed new text at top
+      const newPart = currentText.slice(0, currentText.length - prevTrim.length).trim();
+      combinedUpdate = newPart ? `${timestamp} – ${newPart}\n\n${prevUpdate}` : prevUpdate;
+    } else if (currentText && currentText.length < prevTrim.length) {
+      // User typed ONLY a new update (shorter than old history) -> treat as new entry
+      combinedUpdate = `${timestamp} – ${currentText}\n\n${prevUpdate}`;
     } else {
-      // User edited the log freely; keep exactly what they typed
+      // User edited the log freely -> save exactly what they typed
       combinedUpdate = currentText;
     }
-  } else {
-    // New task or no previous updates: save whatever is in the textarea; if not empty, timestamp it
-    combinedUpdate = currentText ? `${timestamp} – ${currentText}` : "";
   }
 
   const payload = {
@@ -318,7 +299,6 @@ ${prevUpdate}`
     received: taskReceived.value || "",
     deadline: taskDeadline.value || "",
     urgency: taskUrgency.value || "low",
-    // preserve done status when editing
     status: editId ? (tasks.find((t) => t.id === editId)?.status || "") : "",
   };
 
@@ -332,7 +312,10 @@ ${prevUpdate}`
 
   persistAll();
   sbScheduleSave();
+
+  // Ensure modal reflects saved value if user re-opens immediately
   taskUpdate.value = combinedUpdate;
+
   closeModal();
   renderTasks();
   renderArchive();
@@ -341,14 +324,7 @@ ${prevUpdate}`
 /* =========================
    RENDERING
 ========================= */
-const DEPT_KEYS = [
-  "admin",
-  "workforce",
-  "compliance",
-  "complaints",
-  "acquisition",
-  "teletrim",
-];
+const DEPT_KEYS = ["admin", "workforce", "compliance", "complaints", "acquisition", "teletrim"];
 const DONE_KEY = "done";
 
 function isDoneTask(t) {
@@ -363,9 +339,7 @@ const KEY_TO_LABEL = {
   acquisition: "Acquisition",
   teletrim: "Teletrim",
 };
-const LABEL_TO_KEY = Object.fromEntries(
-  Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k])
-);
+const LABEL_TO_KEY = Object.fromEntries(Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k]));
 
 function normalizeDeptKey(v) {
   const s = String(v || "").trim();
@@ -378,9 +352,7 @@ function keyToLabel(key) {
 }
 
 function renderTasks(filtered = null) {
-  document
-    .querySelectorAll(".tasks-container")
-    .forEach((c) => (c.innerHTML = ""));
+  document.querySelectorAll(".tasks-container").forEach((c) => (c.innerHTML = ""));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -399,13 +371,9 @@ function renderTasks(filtered = null) {
     if (!t.department && t.assignedTo) t.department = t.assignedTo;
 
     const deptKey = normalizeDeptKey(t.department);
-
-    // Done tasks render into Done column, but keep department untouched
     const targetKey = isDoneTask(t) ? DONE_KEY : deptKey;
 
-    const col = document.querySelector(
-      `[data-dept="${targetKey}"] .tasks-container`
-    );
+    const col = document.querySelector(`[data-dept="${targetKey}"] .tasks-container`);
     if (!col) return;
 
     const div = document.createElement("div");
@@ -417,17 +385,19 @@ function renderTasks(filtered = null) {
       const dueDate = new Date(t.deadline);
       dueDate.setHours(0, 0, 0, 0);
       if (dueDate.getTime() === today.getTime()) div.classList.add("due-today");
-      else if (dueDate.getTime() === tomorrow.getTime())
-        div.classList.add("due-tomorrow");
+      else if (dueDate.getTime() === tomorrow.getTime()) div.classList.add("due-tomorrow");
     }
 
     const dueText = t.deadline ? formatDate(t.deadline) : "No deadline";
     const dueClass = t.deadline ? "task-due" : "task-due missing";
 
+    // Show latest update line snippet under title (first block before blank line)
+    const latestUpdate = t.update ? String(t.update).split("\n\n")[0] : "";
+
     div.innerHTML = `
       <div class="task-top">
         <div class="task-title">${escapeHTML(t.title)}</div>
-        ${t.update ? `<div class="task-update-snippet" style="margin-top:6px;font-size:12px;opacity:0.85;max-height:32px;overflow:hidden;">${escapeHTML(String(t.update).split("\n\n")[0])}</div>` : ``}
+        ${latestUpdate ? `<div class="task-update-snippet" style="margin-top:6px;font-size:12px;opacity:0.85;max-height:32px;overflow:hidden;">${escapeHTML(latestUpdate)}</div>` : ``}
         <div class="${dueClass}">${escapeHTML(dueText)}</div>
       </div>
       <div class="task-actions">
@@ -436,7 +406,6 @@ function renderTasks(filtered = null) {
       </div>
     `;
 
-    // Archive
     div.querySelector(".archive-btn").onclick = async (e) => {
       e.stopPropagation();
       archive.push({ ...t, archivedAt: new Date().toLocaleString() });
@@ -450,7 +419,6 @@ function renderTasks(filtered = null) {
       renderArchive();
     };
 
-    // Delete (admin only)
     div.querySelector(".delete-btn")?.addEventListener("click", async (e) => {
       e.stopPropagation();
       if (!isAdmin) return alert("Only admins can delete tasks.");
@@ -462,7 +430,6 @@ function renderTasks(filtered = null) {
       }
     });
 
-    // Drag guard: don't open modal while dragging
     div.addEventListener("dragstart", (e) => {
       isDragging = true;
       e.dataTransfer.setData("id", div.dataset.id);
@@ -490,18 +457,13 @@ function updateColumnCounts(list) {
     const title = col.querySelector(".title");
     if (!title) return;
 
-    const baseTitle =
-      title.dataset.base ||
-      title.textContent.replace(/\(\d+\)$/g, "").trim();
+    const baseTitle = title.dataset.base || title.textContent.replace(/\(\d+\)$/g, "").trim();
     title.dataset.base = baseTitle;
 
     const count =
       deptKey === DONE_KEY
         ? list.filter((t) => isDoneTask(t)).length
-        : list.filter(
-            (t) =>
-              !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey
-          ).length;
+        : list.filter((t) => !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey).length;
 
     title.textContent = `${baseTitle} (${count})`;
   });
@@ -526,19 +488,14 @@ function renderArchive() {
       </div>
     `;
 
-    // ✅ Restore
     div.querySelector(".restore-btn").addEventListener("click", async () => {
-      // remove from archive
       archive = archive.filter((x) => x.id !== t.id);
 
-      // restore into tasks (remove archivedAt)
       const restored = { ...t };
       delete restored.archivedAt;
 
-      // if it was done when archived, keep it; otherwise leave as is
       tasks.push(restored);
 
-      // persist + supabase sync
       persistAll();
 
       await sbUpsertOne(SB_TABLE_TASKS, restored);
@@ -548,19 +505,16 @@ function renderArchive() {
       renderArchive();
     });
 
-    // ✅ Delete from archive permanently
-    div
-      .querySelector(".archive-delete-btn")
-      .addEventListener("click", async () => {
-        if (!confirm("Delete this archived task permanently?")) return;
+    div.querySelector(".archive-delete-btn").addEventListener("click", async () => {
+      if (!confirm("Delete this archived task permanently?")) return;
 
-        archive = archive.filter((x) => x.id !== t.id);
-        persistAll();
+      archive = archive.filter((x) => x.id !== t.id);
+      persistAll();
 
-        await sbDeleteOne(SB_TABLE_ARCHIVE, t.id);
+      await sbDeleteOne(SB_TABLE_ARCHIVE, t.id);
 
-        renderArchive();
-      });
+      renderArchive();
+    });
 
     archiveList.appendChild(div);
   });
@@ -629,22 +583,16 @@ function exportToCSV() {
 
   DEPT_KEYS.forEach((deptKey) => {
     const deptLabel = KEY_TO_LABEL[deptKey];
-    const group = tasks.filter(
-      (t) => !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey
-    );
+    const group = tasks.filter((t) => !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey);
     if (!group.length) return;
 
     rows.push(`${deptLabel}`);
     rows.push(header.join(","));
 
     group.forEach((t) => {
-      const row = [
-        t.title || "",
-        t.desc || "",
-        t.update || "",
-        t.department || deptLabel,
-        t.owner || "",
-      ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
+      const row = [t.title || "", t.desc || "", t.update || "", t.department || deptLabel, t.owner || ""].map(
+        (v) => `"${String(v).replace(/"/g, '""')}"`
+      );
       rows.push(row.join(","));
     });
 
@@ -656,21 +604,15 @@ function exportToCSV() {
     rows.push("Done");
     rows.push(header.join(","));
     doneTasks.forEach((t) => {
-      const row = [
-        t.title || "",
-        t.desc || "",
-        t.update || "",
-        t.department || "",
-        t.owner || "",
-      ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
+      const row = [t.title || "", t.desc || "", t.update || "", t.department || "", t.owner || ""].map(
+        (v) => `"${String(v).replace(/"/g, '""')}"`
+      );
       rows.push(row.join(","));
     });
     rows.push("");
   }
 
-  const blob = new Blob([rows.join("\n")], {
-    type: "text/csv;charset=utf-8;",
-  });
+  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = "tasks.csv";
@@ -698,15 +640,27 @@ function toggleTheme() {
 async function init() {
   loadTheme();
 
+  // Auth first
   if (!(await requireAuth())) return;
 
-  isAdmin = await checkAdmin();
-
-  await sbLoadAll();
+  // ✅ FAST: render immediately from localStorage
   renderTasks();
   renderArchive();
 
-  enableRealtime();
+  // Admin check (doesn't block initial render)
+  isAdmin = await checkAdmin();
+  renderTasks();
+
+  // Supabase sync in the background (no blocking)
+  if (isSupabaseConfigured()) {
+    sbLoadAll().then((ok) => {
+      if (ok) {
+        renderTasks();
+        renderArchive();
+      }
+    });
+    enableRealtime();
+  }
 
   searchBtn?.addEventListener("click", doSearch);
   clearSearchBtn?.addEventListener("click", () => {
