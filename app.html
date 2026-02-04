@@ -1,87 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Team Dashboard</title>
-  <link rel="stylesheet" href="styles.css" />
+<meta charset="UTF-8" />
+<title>PM Tool — Workspace</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
+<div class="page">
 
-<header>
-  <div class="header-left">
-    <h1>Team Dashboard</h1>
-  </div>
+  <header>
+    <span>Team Dashboard</span>
 
-  <div class="header-actions">
-    <input id="searchInput" type="text" placeholder="Search tasks..." />
-    <button id="searchBtn">Search</button>
-    <button id="clearSearch">Clear</button>
+    <div class="header-actions">
+      <div>
+        <input type="text" id="searchInput" placeholder="Search tasks...">
+        <button id="searchBtn">Search</button>
+        <button id="clearSearchBtn">Clear</button>
+      </div>
 
-    <div class="theme-toggle">
-      <span>Light</span>
-      <label class="switch">
-        <input type="checkbox" id="themeToggle">
-        <span class="slider"></span>
-      </label>
-      <span>Dark</span>
+      <div class="theme-toggle" title="Toggle Light/Dark mode">
+        <span>Light</span>
+        <label class="switch">
+          <input type="checkbox" id="themeSwitch">
+          <span class="slider"></span>
+        </label>
+        <span>Dark</span>
+      </div>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </header>
+
+  <div id="exportButtons">
+    <button id="exportCSV">Export CSV</button>
+    <button id="globalAddTask">+ Add Task</button>
+</div>
+</div>
+
+  
+  <div class="board">
+    <div class="column" data-dept="admin">
+      <h3><span class="title">Admin</span></h3>
+      <div class="tasks-container"></div>
     </div>
 
-    <button id="logoutBtn">Logout</button>
+    <div class="column" data-dept="workforce">
+      <h3><span class="title">Workforce</span></h3>
+      <div class="tasks-container"></div>
+    </div>
+
+    <div class="column" data-dept="compliance">
+      <h3><span class="title">Compliance</span></h3>
+      <div class="tasks-container"></div>
+    </div>
+
+    <div class="column" data-dept="complaints">
+      <h3><span class="title">Complaints</span></h3>
+      <div class="tasks-container"></div>
+    </div>
+
+    <div class="column" data-dept="acquisition">
+      <h3><span class="title">Acquisition</span></h3>
+      <div class="tasks-container"></div>
+    </div>
+
+    <div class="column" data-dept="teletrim">
+      <h3><span class="title">Teletrim</span></h3>
+      <div class="tasks-container"></div>
+
+
+    
+<div class="column" data-dept="done">
+      <h3><span class="title">Done</span></h3>
+      <div class="tasks-container"></div>
+    </div>
+
   </div>
-</header>
-
-<div id="exportButtons">
-  <button id="exportCSV">Export CSV</button>
-  <button id="globalAddTask">+ Add Task</button>
-</div>
-
-<!-- BOARD -->
-<div class="board">
-
-  <div class="column" data-dept="admin">
-    <h3>Admin (<span class="count">0</span>)</h3>
-    <div class="tasks-container"></div>
-  </div>
-
-  <div class="column" data-dept="workforce">
-    <h3>Workforce (<span class="count">0</span>)</h3>
-    <div class="tasks-container"></div>
-  </div>
-
-  <div class="column" data-dept="compliance">
-    <h3>Compliance (<span class="count">0</span>)</h3>
-    <div class="tasks-container"></div>
-  </div>
-
-  <div class="column" data-dept="complaints">
-    <h3>Complaints (<span class="count">0</span>)</h3>
-    <div class="tasks-container"></div>
-  </div>
-
-  <div class="column" data-dept="acquisition">
-    <h3>Acquisition (<span class="count">0</span>)</h3>
-    <div class="tasks-container"></div>
   </div>
 
-  <div class="column" data-dept="teletrim">
-    <h3>Teletrim (<span class="count">0</span>)</h3>
-    <div class="tasks-container"></div>
-  </div>
 
-  <!-- DONE COLUMN AS SIBLING -->
-  <div class="column" data-dept="done">
-    <h3>Done (<span class="count">0</span>)</h3>
-    <div class="tasks-container"></div>
+  <div class="archive-wrapper">
+    <h2>Archived Tasks</h2>
+    <div id="archiveList"></div>
   </div>
 
 </div>
 
-<section class="archived-section">
-  <h2>Archived Tasks</h2>
-  <div id="archivedTasks">No archived tasks</div>
-</section>
+<!-- Modal -->
+<div class="modal" id="taskModal">
+  <div class="modal-content">
+    <h3>Task Details</h3>
 
-<script src="supabase-config.js"></script>
-<script src="app.js"></script>
+    <label for="taskTitle">Title</label>
+    <input id="taskTitle" placeholder="Enter title">
+
+    <label for="taskDesc">Description</label>
+    <textarea id="taskDesc" placeholder="Enter description"></textarea>
+
+    <label for="taskUpdate">Update</label>
+    <textarea id="taskUpdate" placeholder="Add the latest update (optional)"></textarea>
+<label for="taskDept">Department</label>
+<select id="taskDept">
+  <option value="" disabled selected>Select department</option>
+  <option value="Admin">Admin</option>
+  <option value="Workforce">Workforce</option>
+  <option value="Compliance">Compliance</option>
+  <option value="Complaints">Complaints</option>
+  <option value="Acquisition">Acquisition</option>
+  <option value="Teletrim">Teletrim</option>
+</select>
+
+
+    
+
+    <label for="taskOwner">Owner</label>
+    <input id="taskOwner" placeholder="Enter owner name">
+
+<label for="taskReceived">Received Date</label>
+    <input type="date" id="taskReceived">
+
+    <label for="taskDeadline">Deadline</label>
+    <input type="date" id="taskDeadline">
+
+    <label for="taskUrgency">Urgency</label>
+    <select id="taskUrgency">
+      <option value="low">Low</option>
+      <option value="medium">Mid</option>
+      <option value="high">High</option>
+    </select>
+
+    <div class="modal-actions">
+      <button id="saveBtn" class="btn-save">Save</button>
+      <button id="cancelBtn" class="btn-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+
 </body>
 </html>
