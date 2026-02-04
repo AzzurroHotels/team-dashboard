@@ -123,3 +123,59 @@ This app subscribes to Supabase Realtime (`postgres_changes`) and re-renders aut
 
 To enable this in Supabase:
 - Database → Replication → enable Realtime for `tasks` and `archive`
+
+
+## Admin-only deletes (recommended)
+To prevent accidental deletions in a multi-user team, use an `admins` table and Row Level Security (RLS) so **only admins can delete** tasks and archived items.
+
+### 1) Create admins table
+```sql
+create table if not exists public.admins (
+  user_id uuid primary key references auth.users(id) on delete cascade
+);
+```
+
+### 2) RLS policies (authenticated can read/write; only admins can delete)
+```sql
+alter table public.tasks enable row level security;
+alter table public.archive enable row level security;
+alter table public.admins enable row level security;
+
+-- Read/insert/update for authenticated users
+drop policy if exists "auth read/write tasks" on public.tasks;
+create policy "auth read/write tasks"
+on public.tasks for select, insert, update
+using (auth.role() = 'authenticated')
+with check (auth.role() = 'authenticated');
+
+drop policy if exists "auth read/write archive" on public.archive;
+create policy "auth read/write archive"
+on public.archive for select, insert, update
+using (auth.role() = 'authenticated')
+with check (auth.role() = 'authenticated');
+
+-- Allow authenticated users to read admins table (optional)
+drop policy if exists "auth read admins" on public.admins;
+create policy "auth read admins"
+on public.admins for select
+using (auth.role() = 'authenticated');
+
+-- Delete only for admins
+drop policy if exists "admin delete tasks" on public.tasks;
+create policy "admin delete tasks"
+on public.tasks for delete
+using (exists (select 1 from public.admins a where a.user_id = auth.uid()));
+
+drop policy if exists "admin delete archive" on public.archive;
+create policy "admin delete archive"
+on public.archive for delete
+using (exists (select 1 from public.admins a where a.user_id = auth.uid()));
+```
+
+### 3) Make someone an admin
+1. Create their user in Supabase Auth (Dashboard → Authentication → Users → Add user)
+2. Copy the user's UUID
+3. Insert into `admins`:
+   ```sql
+   insert into public.admins (user_id) values ('<USER_UUID>');
+   ```
