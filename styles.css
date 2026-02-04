@@ -150,14 +150,7 @@
   #globalAddTask:hover{background:var(--btnBlueHover) !important;}
 
   /* Board spans full width like header */
-  .board {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 12px;
-  overflow-x: hidden; /* fit to one row */
-  align-items: start;
-  padding-bottom: 8px;
-}
+  .board{display:flex;gap:14px;padding:18px 0 22px;width:100%;flex-wrap:nowrap;}
 
   /* Columns stretch evenly */
   .column{
@@ -252,55 +245,8 @@
   .tasks-container::-webkit-scrollbar-thumb, #archiveList::-webkit-scrollbar-thumb { background:var(--scrollThumb); border-radius:10px; }
 
 
-/* Fit all 7 columns in one row */
-.column { min-width: 0; max-width: none; }
-
-
 /* ==============================
-   COMPACT MODE (7 columns in 1 row)
-   Keeps layout intact, reduces padding/font so columns fit.
-   ============================== */
-.board {
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.column {
-  padding: 10px;
-}
-
-.column h3 {
-  font-size: 13px;
-  padding: 8px 10px;
-}
-
-.task {
-  padding: 10px;
-}
-
-.task .task-title {
-  font-size: 13px;
-  line-height: 1.15;
-}
-
-.task .task-date,
-.task .no-deadline {
-  font-size: 11px;
-}
-
-.task button,
-.task .btn {
-  padding: 4px 10px;
-  font-size: 11px;
-}
-
-#exportButtons button {
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-/* ==============================
-   HARD GRID OVERRIDES (fix stacked columns)
+   7 COLUMNS IN ONE ROW (Admin..Done)
    ============================== */
 .board {
   display: grid !important;
@@ -314,11 +260,36 @@
   width: auto !important;
   min-width: 0 !important;
   max-width: none !important;
-  grid-column: auto !important;
 }
 
+/* Compact spacing so 7 columns fit */
 .column {
-  width: auto !important;
   min-width: 0 !important;
   max-width: none !important;
+  padding: 10px !important;
+}
+
+.column h3 {
+  font-size: 13px !important;
+  padding: 8px 10px !important;
+}
+
+.task {
+  padding: 10px !important;
+}
+
+.task .task-title {
+  font-size: 13px !important;
+  line-height: 1.15 !important;
+}
+
+.task .task-date,
+.task .no-deadline {
+  font-size: 11px !important;
+}
+
+.task button,
+.task .btn {
+  padding: 4px 10px !important;
+  font-size: 11px !important;
 }
