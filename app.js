@@ -1,4 +1,9 @@
-// app.js (module)
+// app.js (FULL FIXED VERSION)
+// - Fixes modal field IDs to match app.html
+// - Keeps board features (render, drag/drop, realtime, export)
+// - Adds Archive Restore + Delete buttons
+// - Makes "Update" behave like an update log (new entries prepend with timestamp)
+
 import { supabase, isSupabaseConfigured } from "./supabase-config.js";
 
 /* =========================
@@ -20,12 +25,12 @@ const modal = $("taskModal");
 const saveBtn = $("saveBtn");
 const cancelBtn = $("cancelBtn");
 
-// ✅ MUST match app.html
+// ✅ MUST match app.html IDs
 const taskTitle = $("taskTitle");
 const taskDesc = $("taskDesc");
 const taskUpdate = $("taskUpdate");
 const taskDept = $("taskDept");
-const taskOwner = $("taskOwner"); // now exists after app.html update
+const taskOwner = $("taskOwner"); // optional unless you added it in app.html
 const taskReceived = $("taskReceived");
 const taskDeadline = $("taskDeadline");
 const taskUrgency = $("taskUrgency");
@@ -43,8 +48,6 @@ let tasks = JSON.parse(localStorage.getItem("tasks") || "[]");
 let archive = JSON.parse(localStorage.getItem("archive") || "[]");
 let editId = null;
 let isAdmin = false;
-
-// ✅ Drag guard
 let isDragging = false;
 
 /* =========================
@@ -68,7 +71,11 @@ function formatDate(v) {
   try {
     const d = new Date(v);
     if (Number.isNaN(d.getTime())) return String(v);
-    return d.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    });
   } catch {
     return String(v);
   }
@@ -120,13 +127,23 @@ async function checkAdmin() {
 async function sbLoadAll() {
   if (!isSupabaseConfigured()) return false;
 
-  const [{ data: tData, error: tErr }, { data: aData, error: aErr }] = await Promise.all([
-    supabase.from(SB_TABLE_TASKS).select("*").order("id", { ascending: true }),
-    supabase.from(SB_TABLE_ARCHIVE).select("*").order("id", { ascending: true }),
-  ]);
+  const [{ data: tData, error: tErr }, { data: aData, error: aErr }] =
+    await Promise.all([
+      supabase
+        .from(SB_TABLE_TASKS)
+        .select("*")
+        .order("id", { ascending: true }),
+      supabase
+        .from(SB_TABLE_ARCHIVE)
+        .select("*")
+        .order("id", { ascending: true }),
+    ]);
 
   if (tErr || aErr) {
-    console.warn("Supabase load failed; falling back to localStorage.", tErr || aErr);
+    console.warn(
+      "Supabase load failed; falling back to localStorage.",
+      tErr || aErr
+    );
     return false;
   }
 
@@ -162,7 +179,9 @@ async function sbUpsertAll() {
 
 async function sbUpsertOne(table, payloadObj) {
   if (!isSupabaseConfigured()) return;
-  await supabase.from(table).upsert({ id: payloadObj.id, payload: payloadObj }, { onConflict: "id" });
+  await supabase
+    .from(table)
+    .upsert({ id: payloadObj.id, payload: payloadObj }, { onConflict: "id" });
 }
 
 async function sbDeleteOne(table, id) {
@@ -178,17 +197,25 @@ function enableRealtime() {
 
   const ch = supabase.channel("pmtool-realtime");
 
-  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_TASKS }, async () => {
-    await sbLoadAll();
-    renderTasks();
-    renderArchive();
-  });
+  ch.on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: SB_TABLE_TASKS },
+    async () => {
+      await sbLoadAll();
+      renderTasks();
+      renderArchive();
+    }
+  );
 
-  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_ARCHIVE }, async () => {
-    await sbLoadAll();
-    renderTasks();
-    renderArchive();
-  });
+  ch.on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: SB_TABLE_ARCHIVE },
+    async () => {
+      await sbLoadAll();
+      renderTasks();
+      renderArchive();
+    }
+  );
 
   ch.subscribe();
 }
@@ -206,7 +233,12 @@ function openModal(id = null) {
 
     taskTitle.value = t.title || "";
     taskDesc.value = t.desc || "";
-    taskUpdate.value = t.update || "";
+
+    // ✅ Update log behavior:
+    // - textarea is for NEW update entry only
+    // - existing updates are preserved in data and shown after save (by opening again)
+    taskUpdate.value = "";
+
     taskDept.value = t.department || "Admin";
     if (taskOwner) taskOwner.value = t.owner || "";
     taskReceived.value = t.received || "";
@@ -231,37 +263,63 @@ function closeModal() {
 
 function saveTask() {
   const title = (taskTitle.value || "").trim();
-  if (!title) return alert("Please enter a Title.");
+  if (!title) {
+    alert("Please enter a Title.");
+    return;
+  }
+
+  const newUpdate = (taskUpdate.value || "").trim();
+  const timestamp = new Date().toLocaleString();
+
+  const prevUpdate = editId
+    ? (tasks.find((t) => t.id === editId)?.update || "")
+    : "";
+
+  // ✅ Prepend the new update with a timestamp, keep older updates below
+  const combinedUpdate = newUpdate
+    ? `${timestamp} – ${newUpdate}${prevUpdate ? "\n\n" + prevUpdate : ""}`
+    : prevUpdate;
 
   const payload = {
     title,
     desc: taskDesc.value || "",
-    update: taskUpdate.value || "",
+    update: combinedUpdate,
     department: taskDept.value || "Admin",
     owner: taskOwner ? (taskOwner.value || "") : "",
     received: taskReceived.value || "",
     deadline: taskDeadline.value || "",
     urgency: taskUrgency.value || "low",
-    // preserve status on edit
+    // preserve done status when editing
     status: editId ? (tasks.find((t) => t.id === editId)?.status || "") : "",
   };
 
   if (editId) {
-    Object.assign(tasks.find((t) => t.id === editId), payload);
+    const target = tasks.find((t) => t.id === editId);
+    if (!target) return;
+    Object.assign(target, payload);
   } else {
     tasks.push({ id: Date.now(), ...payload });
   }
 
   persistAll();
   sbScheduleSave();
+  taskUpdate.value = "";
   closeModal();
   renderTasks();
+  renderArchive();
 }
 
 /* =========================
    RENDERING
 ========================= */
-const DEPT_KEYS = ["admin", "workforce", "compliance", "complaints", "acquisition", "teletrim"];
+const DEPT_KEYS = [
+  "admin",
+  "workforce",
+  "compliance",
+  "complaints",
+  "acquisition",
+  "teletrim",
+];
 const DONE_KEY = "done";
 
 function isDoneTask(t) {
@@ -276,7 +334,9 @@ const KEY_TO_LABEL = {
   acquisition: "Acquisition",
   teletrim: "Teletrim",
 };
-const LABEL_TO_KEY = Object.fromEntries(Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k]));
+const LABEL_TO_KEY = Object.fromEntries(
+  Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k])
+);
 
 function normalizeDeptKey(v) {
   const s = String(v || "").trim();
@@ -289,7 +349,9 @@ function keyToLabel(key) {
 }
 
 function renderTasks(filtered = null) {
-  document.querySelectorAll(".tasks-container").forEach((c) => (c.innerHTML = ""));
+  document
+    .querySelectorAll(".tasks-container")
+    .forEach((c) => (c.innerHTML = ""));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -308,13 +370,17 @@ function renderTasks(filtered = null) {
     if (!t.department && t.assignedTo) t.department = t.assignedTo;
 
     const deptKey = normalizeDeptKey(t.department);
+
+    // Done tasks render into Done column, but keep department untouched
     const targetKey = isDoneTask(t) ? DONE_KEY : deptKey;
 
-    const col = document.querySelector(`[data-dept="${targetKey}"] .tasks-container`);
+    const col = document.querySelector(
+      `[data-dept="${targetKey}"] .tasks-container`
+    );
     if (!col) return;
 
     const div = document.createElement("div");
-    div.className = `task priority-${(t.urgency || "low")}`;
+    div.className = `task priority-${t.urgency || "low"}`;
     div.draggable = true;
     div.dataset.id = t.id;
 
@@ -322,7 +388,8 @@ function renderTasks(filtered = null) {
       const dueDate = new Date(t.deadline);
       dueDate.setHours(0, 0, 0, 0);
       if (dueDate.getTime() === today.getTime()) div.classList.add("due-today");
-      else if (dueDate.getTime() === tomorrow.getTime()) div.classList.add("due-tomorrow");
+      else if (dueDate.getTime() === tomorrow.getTime())
+        div.classList.add("due-tomorrow");
     }
 
     const dueText = t.deadline ? formatDate(t.deadline) : "No deadline";
@@ -339,6 +406,7 @@ function renderTasks(filtered = null) {
       </div>
     `;
 
+    // Archive
     div.querySelector(".archive-btn").onclick = async (e) => {
       e.stopPropagation();
       archive.push({ ...t, archivedAt: new Date().toLocaleString() });
@@ -352,6 +420,7 @@ function renderTasks(filtered = null) {
       renderArchive();
     };
 
+    // Delete (admin only)
     div.querySelector(".delete-btn")?.addEventListener("click", async (e) => {
       e.stopPropagation();
       if (!isAdmin) return alert("Only admins can delete tasks.");
@@ -363,7 +432,7 @@ function renderTasks(filtered = null) {
       }
     });
 
-    // ✅ DRAG GUARD: don't open modal if you're dragging
+    // Drag guard: don't open modal while dragging
     div.addEventListener("dragstart", (e) => {
       isDragging = true;
       e.dataTransfer.setData("id", div.dataset.id);
@@ -391,13 +460,18 @@ function updateColumnCounts(list) {
     const title = col.querySelector(".title");
     if (!title) return;
 
-    const baseTitle = title.dataset.base || title.textContent.replace(/\(\d+\)$/g, "").trim();
+    const baseTitle =
+      title.dataset.base ||
+      title.textContent.replace(/\(\d+\)$/g, "").trim();
     title.dataset.base = baseTitle;
 
     const count =
       deptKey === DONE_KEY
         ? list.filter((t) => isDoneTask(t)).length
-        : list.filter((t) => !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey).length;
+        : list.filter(
+            (t) =>
+              !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey
+          ).length;
 
     title.textContent = `${baseTitle} (${count})`;
   });
@@ -407,17 +481,57 @@ function renderArchive() {
   archiveList.innerHTML = archive.length ? "" : "<p>No archived tasks</p>";
 
   archive.forEach((t) => {
-    if (!t.deadline && t.due) t.deadline = t.due;
-
     const div = document.createElement("div");
     div.className = "archive-item";
+
     div.innerHTML = `
       <div class="archive-title">${escapeHTML(t.title)}</div>
       <div class="archive-meta">
         <span>${escapeHTML(t.department || "")}</span>
         <span>${escapeHTML(t.archivedAt || "")}</span>
       </div>
+      <div class="archive-actions">
+        <button class="restore-btn">Restore</button>
+        <button class="archive-delete-btn">Delete</button>
+      </div>
     `;
+
+    // ✅ Restore
+    div.querySelector(".restore-btn").addEventListener("click", async () => {
+      // remove from archive
+      archive = archive.filter((x) => x.id !== t.id);
+
+      // restore into tasks (remove archivedAt)
+      const restored = { ...t };
+      delete restored.archivedAt;
+
+      // if it was done when archived, keep it; otherwise leave as is
+      tasks.push(restored);
+
+      // persist + supabase sync
+      persistAll();
+
+      await sbUpsertOne(SB_TABLE_TASKS, restored);
+      await sbDeleteOne(SB_TABLE_ARCHIVE, t.id);
+
+      renderTasks();
+      renderArchive();
+    });
+
+    // ✅ Delete from archive permanently
+    div
+      .querySelector(".archive-delete-btn")
+      .addEventListener("click", async () => {
+        if (!confirm("Delete this archived task permanently?")) return;
+
+        archive = archive.filter((x) => x.id !== t.id);
+        persistAll();
+
+        await sbDeleteOne(SB_TABLE_ARCHIVE, t.id);
+
+        renderArchive();
+      });
+
     archiveList.appendChild(div);
   });
 }
@@ -426,15 +540,14 @@ function renderArchive() {
    DRAG & DROP
 ========================= */
 function enableDragAndDrop() {
-  document.querySelectorAll(".tasks-container").forEach((col) => {
-    col.ondragover = (e) => e.preventDefault();
-    col.ondrop = (e) => {
+  document.querySelectorAll(".tasks-container").forEach((container) => {
+    container.ondragover = (e) => e.preventDefault();
+    container.ondrop = (e) => {
       const id = +e.dataTransfer.getData("id");
       const t = tasks.find((x) => x.id === id);
       if (!t) return;
 
-      // ✅ use closest column, not parentElement assumptions
-      const columnEl = col.closest(".column");
+      const columnEl = container.closest(".column");
       const rawKey = String(columnEl?.dataset?.dept || "").toLowerCase();
 
       if (rawKey === DONE_KEY) {
@@ -486,16 +599,22 @@ function exportToCSV() {
 
   DEPT_KEYS.forEach((deptKey) => {
     const deptLabel = KEY_TO_LABEL[deptKey];
-    const group = tasks.filter((t) => !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey);
+    const group = tasks.filter(
+      (t) => !isDoneTask(t) && normalizeDeptKey(t.department) === deptKey
+    );
     if (!group.length) return;
 
     rows.push(`${deptLabel}`);
     rows.push(header.join(","));
 
     group.forEach((t) => {
-      const row = [t.title || "", t.desc || "", t.update || "", t.department || deptLabel, t.owner || ""].map(
-        (v) => `"${String(v).replace(/"/g, '""')}"`
-      );
+      const row = [
+        t.title || "",
+        t.desc || "",
+        t.update || "",
+        t.department || deptLabel,
+        t.owner || "",
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
       rows.push(row.join(","));
     });
 
@@ -507,15 +626,21 @@ function exportToCSV() {
     rows.push("Done");
     rows.push(header.join(","));
     doneTasks.forEach((t) => {
-      const row = [t.title || "", t.desc || "", t.update || "", t.department || "", t.owner || ""].map(
-        (v) => `"${String(v).replace(/"/g, '""')}"`
-      );
+      const row = [
+        t.title || "",
+        t.desc || "",
+        t.update || "",
+        t.department || "",
+        t.owner || "",
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
       rows.push(row.join(","));
     });
     rows.push("");
   }
 
-  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob([rows.join("\n")], {
+    type: "text/csv;charset=utf-8;",
+  });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = "tasks.csv";
