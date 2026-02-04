@@ -261,7 +261,6 @@ function saveTask() {
   // Save ONLY what's currently in the Update textarea.
   // Old updates are replaced (deleted).
   const combinedUpdate = currentText;
-  }
 
   const payload = {
     title,
