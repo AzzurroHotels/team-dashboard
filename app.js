@@ -53,6 +53,26 @@ async function doLogout() {
   window.location.href = "./index.html";
 }
 
+async function checkAdmin() {
+  try {
+    const { data: userRes } = await supabase.auth.getUser();
+    const uid = userRes?.user?.id;
+    if (!uid) return false;
+
+    const { data, error } = await supabase
+      .from(SB_TABLE_ADMINS)
+      .select("user_id")
+      .eq("user_id", uid)
+      .maybeSingle();
+
+    if (error) return false;
+    return !!data;
+  } catch {
+    return false;
+  }
+}
+
+
 /* =========================
    THEME (persisted)
 ========================= */
@@ -85,6 +105,9 @@ let editId = null;
 
 const SB_TABLE_TASKS = "tasks";
 const SB_TABLE_ARCHIVE = "archive";
+const SB_TABLE_ADMINS = "admins";
+
+let isAdmin = false;
 
 /* =========================
    SUPABASE LOAD/SAVE
@@ -132,19 +155,6 @@ async function sbUpsertAll() {
     console.warn("Supabase upsert failed.", tUp.error || aUp.error);
     return;
   }
-
-  // Keep tables clean by removing rows that no longer exist locally
-  const tIds = tRows.map((r) => r.id);
-  const aIds = aRows.map((r) => r.id);
-
-  await Promise.all([
-    tIds.length
-      ? supabase.from(SB_TABLE_TASKS).delete().not("id", "in", `(${tIds.join(",")})`)
-      : supabase.from(SB_TABLE_TASKS).delete().neq("id", -1),
-    aIds.length
-      ? supabase.from(SB_TABLE_ARCHIVE).delete().not("id", "in", `(${aIds.join(",")})`)
-      : supabase.from(SB_TABLE_ARCHIVE).delete().neq("id", -1),
-  ]);
 }
 
 function persistAll() {
@@ -307,7 +317,7 @@ function renderTasks(filtered = null) {
       </div>
       <div class="task-actions">
         <button class="archive-btn">Archive</button>
-        <button class="delete-btn">Delete</button>
+        ${isAdmin ? `<button class="delete-btn">Delete</button>` : ``}
       </div>
     `;
 
@@ -320,14 +330,15 @@ function renderTasks(filtered = null) {
       renderArchive();
     };
 
-    div.querySelector(".delete-btn").onclick = (e) => {
+    div.querySelector(".delete-btn")?.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (!isAdmin) return alert("Only admins can delete tasks.");
       if (confirm("Are you sure you want to delete this task?")) {
         tasks = tasks.filter((x) => x.id !== t.id);
         persistAll();
         renderTasks();
       }
-    };
+    });
 
     div.onclick = () => openModal(t.id);
 
@@ -371,7 +382,7 @@ function renderArchive() {
       </div>
       <div class="task-actions">
         <button class="archive-btn">Restore</button>
-        <button class="delete-btn">Delete</button>
+        ${isAdmin ? `<button class="delete-btn">Delete</button>` : ``}
       </div>
     `;
 
@@ -385,14 +396,15 @@ function renderArchive() {
       renderArchive();
     };
 
-    div.querySelector(".delete-btn").onclick = (e) => {
+    div.querySelector(".delete-btn")?.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (!isAdmin) return alert("Only admins can delete tasks.");
       if (confirm("Are you sure you want to permanently delete this archived task?")) {
         archive = archive.filter((x) => x.id !== t.id);
         persistAll();
         renderArchive();
       }
-    };
+    });
 
     archiveList.appendChild(div);
   });
@@ -515,6 +527,8 @@ function formatDate(yyyy_mm_dd) {
 window.onload = async () => {
   const ok = await requireAuth();
   if (!ok) return;
+
+  isAdmin = await checkAdmin();
 
   await sbLoadAll();
   sbSubscribeRealtime();
