@@ -238,7 +238,7 @@ function openModal(id = null) {
     // - textarea is for NEW update entry only
     // - existing updates are preserved in data and shown after save (by opening again)
     taskUpdate.value = "";
-
+    renderUpdateHistory("");
     taskDept.value = t.department || "Admin";
     if (taskOwner) taskOwner.value = t.owner || "";
     taskReceived.value = t.received || "";
@@ -260,6 +260,52 @@ function closeModal() {
   modal.style.display = "none";
   editId = null;
 }
+
+
+function ensureUpdateHistoryEl() {
+  // Creates a read-only update history panel under the Update textarea (inside the modal)
+  const content = modal?.querySelector(".modal-content");
+  if (!content) return null;
+
+  let panel = document.getElementById("updateHistory");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "updateHistory";
+    panel.style.marginTop = "8px";
+    panel.style.padding = "10px";
+    panel.style.border = "1px solid #e5e7eb";
+    panel.style.borderRadius = "10px";
+    panel.style.maxHeight = "140px";
+    panel.style.overflow = "auto";
+    panel.style.background = "#fff";
+    panel.style.fontSize = "13px";
+    panel.style.whiteSpace = "pre-wrap";
+    panel.style.display = "none";
+
+    // Insert right after taskUpdate textarea if possible
+    const updateEl = taskUpdate;
+    if (updateEl && updateEl.insertAdjacentElement) {
+      updateEl.insertAdjacentElement("afterend", panel);
+    } else {
+      content.appendChild(panel);
+    }
+  }
+  return panel;
+}
+
+function renderUpdateHistory(text) {
+  const panel = ensureUpdateHistoryEl();
+  if (!panel) return;
+  const val = String(text || "").trim();
+  if (!val) {
+    panel.style.display = "none";
+    panel.textContent = "";
+    return;
+  }
+  panel.style.display = "block";
+  panel.textContent = val;
+}
+
 
 function saveTask() {
   const title = (taskTitle.value || "").trim();
@@ -304,6 +350,8 @@ function saveTask() {
   persistAll();
   sbScheduleSave();
   taskUpdate.value = "";
+  // Update the on-screen history panel immediately (no refresh needed)
+  renderUpdateHistory(combinedUpdate);
   closeModal();
   renderTasks();
   renderArchive();
@@ -398,6 +446,7 @@ function renderTasks(filtered = null) {
     div.innerHTML = `
       <div class="task-top">
         <div class="task-title">${escapeHTML(t.title)}</div>
+        ${t.update ? `<div class="task-update-snippet" style="margin-top:6px;font-size:12px;opacity:0.85;max-height:32px;overflow:hidden;">${escapeHTML(String(t.update).split("\n\n")[0])}</div>` : ``}
         <div class="${dueClass}">${escapeHTML(dueText)}</div>
       </div>
       <div class="task-actions">
