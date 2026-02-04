@@ -20,14 +20,13 @@ const modal = $("taskModal");
 const saveBtn = $("saveBtn");
 const cancelBtn = $("cancelBtn");
 
+// ✅ FIX: these IDs MUST match app.html
 const taskTitle = $("taskTitle");
-// NOTE: IDs must match app.html
-const taskDesc = $("taskDesc");
+const taskDesc = $("taskDesc");          // was taskDescription (wrong)
 const taskUpdate = $("taskUpdate");
-const taskDept = $("taskDept");
-// Optional field (not present in app.html by default)
-const taskOwner = $("taskOwner");
-const taskReceived = $("taskReceived");
+const taskDept = $("taskDept");          // was taskDepartment (wrong)
+const taskOwner = $("taskOwner");        // optional (not in your HTML right now)
+const taskReceived = $("taskReceived");  // was taskReceivedDate (wrong)
 const taskDeadline = $("taskDeadline");
 const taskUrgency = $("taskUrgency");
 
@@ -66,7 +65,11 @@ function formatDate(v) {
   try {
     const d = new Date(v);
     if (Number.isNaN(d.getTime())) return String(v);
-    return d.toLocaleDateString(undefined, { month: "short", day: "2-digit", year: "numeric" });
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    });
   } catch {
     return String(v);
   }
@@ -102,7 +105,12 @@ async function checkAdmin() {
   const userId = data?.user?.id;
   if (!userId) return false;
 
-  const { data: rows, error } = await supabase.from(SB_TABLE_ADMINS).select("user_id").eq("user_id", userId).maybeSingle();
+  const { data: rows, error } = await supabase
+    .from(SB_TABLE_ADMINS)
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
   if (error) return false;
   return !!rows?.user_id;
 }
@@ -113,13 +121,20 @@ async function checkAdmin() {
 async function sbLoadAll() {
   if (!isSupabaseConfigured()) return false;
 
-  const [{ data: tData, error: tErr }, { data: aData, error: aErr }] = await Promise.all([
-    supabase.from(SB_TABLE_TASKS).select("*").order("id", { ascending: true }),
-    supabase.from(SB_TABLE_ARCHIVE).select("*").order("id", { ascending: true }),
-  ]);
+  const [{ data: tData, error: tErr }, { data: aData, error: aErr }] =
+    await Promise.all([
+      supabase.from(SB_TABLE_TASKS).select("*").order("id", { ascending: true }),
+      supabase
+        .from(SB_TABLE_ARCHIVE)
+        .select("*")
+        .order("id", { ascending: true }),
+    ]);
 
   if (tErr || aErr) {
-    console.warn("Supabase load failed; falling back to localStorage.", tErr || aErr);
+    console.warn(
+      "Supabase load failed; falling back to localStorage.",
+      tErr || aErr
+    );
     return false;
   }
 
@@ -155,7 +170,9 @@ async function sbUpsertAll() {
 
 async function sbUpsertOne(table, payloadObj) {
   if (!isSupabaseConfigured()) return;
-  await supabase.from(table).upsert({ id: payloadObj.id, payload: payloadObj }, { onConflict: "id" });
+  await supabase
+    .from(table)
+    .upsert({ id: payloadObj.id, payload: payloadObj }, { onConflict: "id" });
 }
 
 async function sbDeleteOne(table, id) {
@@ -171,17 +188,25 @@ function enableRealtime() {
 
   const ch = supabase.channel("pmtool-realtime");
 
-  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_TASKS }, async () => {
-    await sbLoadAll();
-    renderTasks();
-    renderArchive();
-  });
+  ch.on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: SB_TABLE_TASKS },
+    async () => {
+      await sbLoadAll();
+      renderTasks();
+      renderArchive();
+    }
+  );
 
-  ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_ARCHIVE }, async () => {
-    await sbLoadAll();
-    renderTasks();
-    renderArchive();
-  });
+  ch.on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: SB_TABLE_ARCHIVE },
+    async () => {
+      await sbLoadAll();
+      renderTasks();
+      renderArchive();
+    }
+  );
 
   ch.subscribe();
 }
@@ -192,6 +217,14 @@ function enableRealtime() {
 function openModal(id = null) {
   editId = id;
   modal.style.display = "flex";
+
+  // ✅ Defensive: if your HTML ever changes, fail loudly instead of “Save not working”
+  if (!taskTitle || !taskDesc || !taskDept || !taskReceived || !taskDeadline || !taskUrgency) {
+    alert(
+      "Form fields not found. Please make sure app.html field IDs match app.js (taskTitle, taskDesc, taskDept, taskReceived, taskDeadline, taskUrgency)."
+    );
+    return;
+  }
 
   if (id) {
     const t = tasks.find((x) => x.id === id);
@@ -223,8 +256,22 @@ function closeModal() {
 }
 
 function saveTask() {
+  // ✅ Defensive: prevent silent crashes
+  if (!taskTitle || !taskDesc || !taskDept || !taskReceived || !taskDeadline || !taskUrgency) {
+    alert(
+      "Save failed: missing form fields. Ensure app.html IDs match app.js (taskDesc/taskDept/taskReceived)."
+    );
+    return;
+  }
+
+  const title = (taskTitle.value || "").trim();
+  if (!title) {
+    alert("Please enter a Title.");
+    return;
+  }
+
   const payload = {
-    title: taskTitle.value || "",
+    title,
     desc: taskDesc.value || "",
     update: taskUpdate.value || "",
     department: taskDept.value || "Admin",
@@ -232,12 +279,14 @@ function saveTask() {
     received: taskReceived.value || "",
     deadline: taskDeadline.value || "",
     urgency: taskUrgency.value || "low",
-    // ✅ IMPORTANT: preserve status when editing so Done tasks don't disappear
+    // ✅ preserve status when editing so Done tasks don't disappear
     status: editId ? (tasks.find((t) => t.id === editId)?.status || "") : "",
   };
 
   if (editId) {
-    Object.assign(tasks.find((t) => t.id === editId), payload);
+    const target = tasks.find((t) => t.id === editId);
+    if (!target) return;
+    Object.assign(target, payload);
   } else {
     tasks.push({ id: Date.now(), ...payload });
   }
@@ -266,7 +315,10 @@ const KEY_TO_LABEL = {
   acquisition: "Acquisition",
   teletrim: "Teletrim",
 };
-const LABEL_TO_KEY = Object.fromEntries(Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k]));
+
+const LABEL_TO_KEY = Object.fromEntries(
+  Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k])
+);
 
 function normalizeDeptKey(v) {
   const s = String(v || "").trim();
@@ -299,7 +351,7 @@ function renderTasks(filtered = null) {
 
     const deptKey = normalizeDeptKey(t.department);
 
-    // ✅ FIX: Done tasks render into Done column, but keep department untouched
+    // Done tasks render into Done column (department unchanged)
     const targetKey = isDoneTask(t) ? DONE_KEY : deptKey;
 
     const col = document.querySelector(`[data-dept="${targetKey}"] .tasks-container`);
@@ -374,7 +426,6 @@ function updateColumnCounts(list) {
     const baseTitle = title.dataset.base || title.textContent.replace(/\(\d+\)$/g, "").trim();
     title.dataset.base = baseTitle;
 
-    // ✅ FIX: Done count uses status, department counts exclude done
     const count =
       deptKey === DONE_KEY
         ? list.filter((t) => isDoneTask(t)).length
@@ -416,7 +467,7 @@ function enableDragAndDrop() {
 
       const rawKey = String(col.parentElement?.dataset?.dept || "").toLowerCase();
 
-      // ✅ FIX: dropping into Done sets status only (keeps department)
+      // dropping into Done sets status only (keeps department)
       if (rawKey === DONE_KEY) {
         t.status = "done";
       } else {
@@ -462,7 +513,6 @@ function doSearch() {
 
 /* =========================
    EXPORT CSV
-   Title | Description | Update | Department | Owner
 ========================= */
 function exportToCSV() {
   if (!tasks.length) return alert("No tasks to export");
@@ -488,7 +538,6 @@ function exportToCSV() {
     rows.push("");
   });
 
-  // ✅ Include Done tasks as a separate section
   const doneTasks = tasks.filter((t) => isDoneTask(t));
   if (doneTasks.length) {
     rows.push("Done");
@@ -534,14 +583,12 @@ async function init() {
 
   isAdmin = await checkAdmin();
 
-  // Initial load
   await sbLoadAll();
   renderTasks();
   renderArchive();
 
   enableRealtime();
 
-  // Buttons
   searchBtn?.addEventListener("click", doSearch);
   clearSearchBtn?.addEventListener("click", () => {
     if (searchInput) searchInput.value = "";
