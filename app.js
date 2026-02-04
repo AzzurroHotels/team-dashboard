@@ -21,11 +21,13 @@ const saveBtn = $("saveBtn");
 const cancelBtn = $("cancelBtn");
 
 const taskTitle = $("taskTitle");
-const taskDesc = $("taskDescription");
+// NOTE: IDs must match app.html
+const taskDesc = $("taskDesc");
 const taskUpdate = $("taskUpdate");
-const taskDept = $("taskDepartment");
+const taskDept = $("taskDept");
+// Optional field (not present in app.html by default)
 const taskOwner = $("taskOwner");
-const taskReceived = $("taskReceivedDate");
+const taskReceived = $("taskReceived");
 const taskDeadline = $("taskDeadline");
 const taskUrgency = $("taskUrgency");
 
