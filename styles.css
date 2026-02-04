@@ -246,50 +246,19 @@
 
 
 /* ==============================
-   7 COLUMNS IN ONE ROW (Admin..Done)
+   7 columns in one row (Admin..Done)
    ============================== */
-.board {
-  display: grid !important;
+.board{
+  display:grid !important;
   grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
   gap: 10px !important;
   align-items: start !important;
   overflow-x: hidden !important;
 }
-
-.board > .column {
-  width: auto !important;
+.board > .column{
   min-width: 0 !important;
   max-width: none !important;
 }
-
-/* Compact spacing so 7 columns fit */
-.column {
+.column{
   min-width: 0 !important;
-  max-width: none !important;
-  padding: 10px !important;
-}
-
-.column h3 {
-  font-size: 13px !important;
-  padding: 8px 10px !important;
-}
-
-.task {
-  padding: 10px !important;
-}
-
-.task .task-title {
-  font-size: 13px !important;
-  line-height: 1.15 !important;
-}
-
-.task .task-date,
-.task .no-deadline {
-  font-size: 11px !important;
-}
-
-.task button,
-.task .btn {
-  padding: 4px 10px !important;
-  font-size: 11px !important;
 }
