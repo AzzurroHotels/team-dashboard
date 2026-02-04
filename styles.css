@@ -153,8 +153,8 @@
   .board {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 12px;
-  overflow-x: hidden; /* fit to one row */
+  gap: 10px;
+  overflow-x: hidden;
   align-items: start;
   padding-bottom: 8px;
 }
@@ -297,19 +297,4 @@
 #exportButtons button {
   padding: 6px 10px;
   font-size: 12px;
-}
-
-/* ==============================
-   DONE COLUMN OUTSIDE .board (sibling beside Teletrim)
-   ============================== */
-.board-wrap{
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 10px;
-  align-items: start;
-}
-
-/* Let .board itself not create a second grid; its children participate in board-wrap grid */
-.board{
-  display: contents;
 }
