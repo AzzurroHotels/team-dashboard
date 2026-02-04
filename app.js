@@ -255,39 +255,12 @@ function saveTask() {
     return;
   }
 
-  const timestamp = new Date().toLocaleString();
-
-  const prevUpdate = editId ? (tasks.find((t) => t.id === editId)?.update || "") : "";
-  const prevTrim = String(prevUpdate || "").trim();
-
   const currentText = String(taskUpdate.value || "").trim();
 
-  // Decide how to store the update log
-  let combinedUpdate = prevUpdate;
-
-  if (!editId) {
-    // New task: if update text provided, timestamp it
-    combinedUpdate = currentText ? `${timestamp} – ${currentText}` : "";
-  } else {
-    if (!currentText) {
-      combinedUpdate = ""; // user cleared it intentionally
-    } else if (!prevTrim) {
-      // no previous history: timestamp whatever they typed
-      combinedUpdate = `${timestamp} – ${currentText}`;
-    } else if (currentText === prevTrim) {
-      // unchanged
-      combinedUpdate = prevUpdate;
-    } else if (currentText.endsWith(prevTrim)) {
-      // User kept old history at bottom and typed new text at top
-      const newPart = currentText.slice(0, currentText.length - prevTrim.length).trim();
-      combinedUpdate = newPart ? `${timestamp} – ${newPart}\n\n${prevUpdate}` : prevUpdate;
-    } else if (currentText && currentText.length < prevTrim.length) {
-      // User typed ONLY a new update (shorter than old history) -> treat as new entry
-      combinedUpdate = `${timestamp} – ${currentText}\n\n${prevUpdate}`;
-    } else {
-      // User edited the log freely -> save exactly what they typed
-      combinedUpdate = currentText;
-    }
+  // ✅ Overwrite behavior (no history):
+  // Save ONLY what's currently in the Update textarea.
+  // Old updates are replaced (deleted).
+  const combinedUpdate = currentText;
   }
 
   const payload = {
