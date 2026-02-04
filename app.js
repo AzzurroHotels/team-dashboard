@@ -391,14 +391,10 @@ function renderTasks(filtered = null) {
     const dueText = t.deadline ? formatDate(t.deadline) : "No deadline";
     const dueClass = t.deadline ? "task-due" : "task-due missing";
 
-    // Show latest update line snippet under title (first block before blank line)
-    const latestUpdate = t.update ? String(t.update).split("\n\n")[0] : "";
-
     div.innerHTML = `
       <div class="task-top">
         <div class="task-title">${escapeHTML(t.title)}</div>
-        ${latestUpdate ? `<div class="task-update-snippet" style="margin-top:6px;font-size:12px;opacity:0.85;max-height:32px;overflow:hidden;">${escapeHTML(latestUpdate)}</div>` : ``}
-        <div class="${dueClass}">${escapeHTML(dueText)}</div>
+                <div class="${dueClass}">${escapeHTML(dueText)}</div>
       </div>
       <div class="task-actions">
         <button class="archive-btn">Archive</button>
