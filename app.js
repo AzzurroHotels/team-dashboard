@@ -245,6 +245,7 @@ function saveTask() {
     update: taskUpdate.value || "",
     department: taskDept.value || "Admin",
     owner: (taskOwner?.value || ""),
+    status: (currentTask?.status || ""),
     received: taskReceived.value || "",
     deadline: taskDeadline.value || "",
     urgency: taskUrgency.value || "low",
@@ -265,6 +266,11 @@ function saveTask() {
    RENDERING
 ========================= */
 const DEPT_KEYS = ["admin", "workforce", "compliance", "complaints", "acquisition", "teletrim"];
+
+function isDoneTask(t){
+  return String(t?.status || "").toLowerCase() === "done";
+}
+
 const KEY_TO_LABEL = {
   admin: "Admin",
   workforce: "Workforce",
