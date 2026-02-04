@@ -28,15 +28,14 @@
         </label>
         <span>Dark</span>
       </div>
+      <button id="logoutBtn">Logout</button>
     </div>
   </header>
 
   <div id="exportButtons">
-    <div class="btn-col">
-      <button id="exportCSV">Export CSV</button>
-      <button id="logoutBtn">Logout</button>
-      <button id="globalAddTask">+ Add Task</button>
-    </div>
+    <button id="exportCSV">Export CSV</button>
+    <button id="globalAddTask">+ Add Task</button>
+</div>
 </div>
 
   
@@ -69,7 +68,14 @@
     <div class="column" data-dept="teletrim">
       <h3><span class="title">Teletrim</span></h3>
       <div class="tasks-container"></div>
+
+
+    <div class="column" data-dept="done">
+      <h3><span class="title">Done</span></h3>
+      <div class="tasks-container"></div>
     </div>
+
+  </div>
   </div>
 
 
@@ -106,9 +112,10 @@
 
 
     
-    
+
     <label for="taskOwner">Owner</label>
     <input id="taskOwner" placeholder="Enter owner name">
+
 <label for="taskReceived">Received Date</label>
     <input type="date" id="taskReceived">
 
