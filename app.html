@@ -28,27 +28,21 @@
         </label>
         <span>Dark</span>
       </div>
-      <button id="logoutBtn">Logout</button>
     </div>
   </header>
 
   <div id="exportButtons">
-    <button id="exportCSV">Export CSV</button>
-    <button id="globalAddTask">+ Add Task</button>
-</div>
-</div>
+    <div class="btn-col">
+      <button id="exportCSV">Export CSV</button>
+      <button id="globalAddTask">+ Add Task</button>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </div>
 
-  
   <div class="board">
     <div class="column" data-dept="admin">
       <h3><span class="title">Admin</span></h3>
-      <div class="tasks-container">
-
-    <div class="column" data-dept="done">
-      <h3><span class="title">Done</span> (<span class="count">0</span>)</h3>
       <div class="tasks-container"></div>
-    </div>
-</div>
     </div>
 
     <div class="column" data-dept="workforce">
@@ -74,14 +68,13 @@
     <div class="column" data-dept="teletrim">
       <h3><span class="title">Teletrim</span></h3>
       <div class="tasks-container"></div>
+    </div>
 
-
-    
-</div>
-
+    <div class="column" data-dept="done">
+      <h3><span class="title">Done</span></h3>
+      <div class="tasks-container"></div>
+    </div>
   </div>
-  </div>
-
 
   <div class="archive-wrapper">
     <h2>Archived Tasks</h2>
@@ -103,24 +96,19 @@
 
     <label for="taskUpdate">Update</label>
     <textarea id="taskUpdate" placeholder="Add the latest update (optional)"></textarea>
-<label for="taskDept">Department</label>
-<select id="taskDept">
-  <option value="" disabled selected>Select department</option>
-  <option value="Admin">Admin</option>
-  <option value="Workforce">Workforce</option>
-  <option value="Compliance">Compliance</option>
-  <option value="Complaints">Complaints</option>
-  <option value="Acquisition">Acquisition</option>
-  <option value="Teletrim">Teletrim</option>
-</select>
 
+    <label for="taskDept">Department</label>
+    <select id="taskDept">
+      <option value="" disabled selected>Select department</option>
+      <option value="Admin">Admin</option>
+      <option value="Workforce">Workforce</option>
+      <option value="Compliance">Compliance</option>
+      <option value="Complaints">Complaints</option>
+      <option value="Acquisition">Acquisition</option>
+      <option value="Teletrim">Teletrim</option>
+    </select>
 
-    
-
-    <label for="taskOwner">Owner</label>
-    <input id="taskOwner" placeholder="Enter owner name">
-
-<label for="taskReceived">Received Date</label>
+    <label for="taskReceived">Received Date</label>
     <input type="date" id="taskReceived">
 
     <label for="taskDeadline">Deadline</label>
@@ -141,6 +129,5 @@
 </div>
 
 <script type="module" src="app.js"></script>
-
 </body>
 </html>
