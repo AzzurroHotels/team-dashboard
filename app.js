@@ -141,8 +141,16 @@ async function sbLoadAll() {
     return false;
   }
 
+  // Log raw Supabase data
+  console.log("📦 Raw Supabase tasks data:", tData);
+  console.log("📦 Raw Supabase archive data:", aData);
+
   tasks = (tData || []).map((r) => r.payload).filter(Boolean);
   archive = (aData || []).map((r) => r.payload).filter(Boolean);
+
+  // Log processed tasks
+  console.log("✅ Processed tasks:", tasks);
+  console.log("✅ Processed archive:", archive);
 
   localStorage.setItem("tasks", JSON.stringify(tasks));
   localStorage.setItem("archive", JSON.stringify(archive));
@@ -332,6 +340,10 @@ function renderTasks(filtered = null) {
   tomorrow.setDate(today.getDate() + 1);
 
   const list = filtered || tasks;
+
+  // Log Teletrim tasks specifically
+  const teletrimTasks = list.filter((t) => normalizeDeptKey(t.department) === "teletrim");
+  console.log("🎯 Teletrim tasks:", teletrimTasks);
 
   updateColumnCounts(list);
 
