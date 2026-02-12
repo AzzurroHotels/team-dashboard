@@ -523,6 +523,8 @@ function enableDragAndDrop() {
   document.querySelectorAll(".tasks-container").forEach((container) => {
     container.ondragover = (e) => e.preventDefault();
     container.ondrop = (e) => {
+      e.preventDefault();
+      isDragging = false;
       const id = +e.dataTransfer.getData("id");
       const t = tasks.find((x) => x.id === id);
       if (!t) return;
