@@ -18,7 +18,7 @@ const searchInput = $("searchInput");
 const searchBtn = $("searchBtn");
 const clearSearchBtn = $("clearSearchBtn");
 
-const exportCSVBtn = $("exportCSV");
+const exportCSVBtn = $("exportCSV");a
 const addTaskBtn = $("globalAddTask");
 const logoutBtn = $("logoutBtn");
 
@@ -28,7 +28,7 @@ const modal = $("taskModal");
 const saveBtn = $("saveBtn");
 const cancelBtn = $("cancelBtn");
 
-// ✅ MUST match app.html IDs
+// âœ… MUST match app.html IDs
 const taskTitle = $("taskTitle");
 const taskDesc = $("taskDesc");
 const taskUpdate = $("taskUpdate");
@@ -70,10 +70,18 @@ function persistAll() {
   localStorage.setItem("archive", JSON.stringify(archive));
 }
 
+// Parse "YYYY-MM-DD" as LOCAL midnight (not UTC)
+function parseLocalDate(v) {
+  const parts = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (parts) return new Date(+parts[1], +parts[2] - 1, +parts[3]);
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function formatDate(v) {
   try {
-    const d = new Date(v);
-    if (Number.isNaN(d.getTime())) return String(v);
+    const d = parseLocalDate(v);
+    if (!d) return String(v);
     return d.toLocaleDateString(undefined, {
       month: "short",
       day: "2-digit",
@@ -142,15 +150,15 @@ async function sbLoadAll() {
   }
 
   // Log raw Supabase data
-  console.log("📦 Raw Supabase tasks data:", tData);
-  console.log("📦 Raw Supabase archive data:", aData);
+  console.log("ðŸ“¦ Raw Supabase tasks data:", tData);
+  console.log("ðŸ“¦ Raw Supabase archive data:", aData);
 
   tasks = (tData || []).map((r) => r.payload).filter(Boolean);
   archive = (aData || []).map((r) => r.payload).filter(Boolean);
 
   // Log processed tasks
-  console.log("✅ Processed tasks:", tasks);
-  console.log("✅ Processed archive:", archive);
+  console.log("âœ… Processed tasks:", tasks);
+  console.log("âœ… Processed archive:", archive);
 
   localStorage.setItem("tasks", JSON.stringify(tasks));
   localStorage.setItem("archive", JSON.stringify(archive));
@@ -169,14 +177,14 @@ async function sbUpsertAll() {
   const tRows = (tasks || []).map((t) => ({ id: t.id, payload: t }));
   const aRows = (archive || []).map((a) => ({ id: a.id, payload: a }));
 
-  const [tUp, aUp] = await Promise.all([
-    supabase.from(SB_TABLE_TASKS).upsert(tRows, { onConflict: "id" }),
-    supabase.from(SB_TABLE_ARCHIVE).upsert(aRows, { onConflict: "id" }),
-  ]);
+  const promises = [];
+  if (tRows.length) promises.push(supabase.from(SB_TABLE_TASKS).upsert(tRows, { onConflict: "id" }));
+  if (aRows.length) promises.push(supabase.from(SB_TABLE_ARCHIVE).upsert(aRows, { onConflict: "id" }));
 
-  if (tUp.error || aUp.error) {
-    console.warn("Supabase upsert failed.", tUp.error || aUp.error);
-  }
+  const results = await Promise.all(promises);
+  results.forEach((r) => {
+    if (r.error) console.warn("Supabase upsert failed.", r.error);
+  });
 }
 
 async function sbUpsertOne(table, payloadObj) {
@@ -231,7 +239,7 @@ function openModal(id = null) {
     taskTitle.value = t.title || "";
     taskDesc.value = t.desc || "";
 
-    // ✅ Show full update history INSIDE the textarea
+    // âœ… Show full update history INSIDE the textarea
     taskUpdate.value = t.update || "";
 
     taskDept.value = t.department || "Admin";
@@ -243,7 +251,7 @@ function openModal(id = null) {
     taskTitle.value = "";
     taskDesc.value = "";
     taskUpdate.value = "";
-    taskDept.value = "Admin";
+    taskDept.value = "";
     if (taskOwner) taskOwner.value = "";
     taskReceived.value = "";
     taskDeadline.value = "";
@@ -263,9 +271,15 @@ function saveTask() {
     return;
   }
 
+  const dept = (taskDept.value || "").trim();
+  if (!dept) {
+    alert("Please select a Department.");
+    return;
+  }
+
   const currentText = String(taskUpdate.value || "").trim();
 
-  // ✅ Overwrite behavior (no history):
+  // âœ… Overwrite behavior (no history):
   // Save ONLY what's currently in the Update textarea.
   // Old updates are replaced (deleted).
   const combinedUpdate = currentText;
@@ -274,7 +288,7 @@ function saveTask() {
     title,
     desc: taskDesc.value || "",
     update: combinedUpdate,
-    department: taskDept.value || "Admin",
+    department: dept,
     owner: taskOwner ? (taskOwner.value || "") : "",
     received: taskReceived.value || "",
     deadline: taskDeadline.value || "",
@@ -343,7 +357,7 @@ function renderTasks(filtered = null) {
 
   // Log Teletrim tasks specifically
   const teletrimTasks = list.filter((t) => normalizeDeptKey(t.department) === "teletrim");
-  console.log("🎯 Teletrim tasks:", teletrimTasks);
+  console.log("ðŸŽ¯ Teletrim tasks:", teletrimTasks);
 
   updateColumnCounts(list);
 
@@ -366,10 +380,12 @@ function renderTasks(filtered = null) {
     div.dataset.id = t.id;
 
     if (t.deadline) {
-      const dueDate = new Date(t.deadline);
-      dueDate.setHours(0, 0, 0, 0);
-      if (dueDate.getTime() === today.getTime()) div.classList.add("due-today");
-      else if (dueDate.getTime() === tomorrow.getTime()) div.classList.add("due-tomorrow");
+      const dueDate = parseLocalDate(t.deadline);
+      if (dueDate) {
+        dueDate.setHours(0, 0, 0, 0);
+        if (dueDate.getTime() === today.getTime()) div.classList.add("due-today");
+        else if (dueDate.getTime() === tomorrow.getTime()) div.classList.add("due-tomorrow");
+      }
     }
 
     const dueText = t.deadline ? formatDate(t.deadline) : "No deadline";
@@ -558,7 +574,7 @@ function doSearch() {
 function exportToCSV() {
   if (!tasks.length) return alert("No tasks to export");
 
-  const header = ["Title", "Description", "Update", "Department", "Owner"];
+  const header = ["Title", "Description", "Update", "Department", "Owner", "Received", "Deadline", "Urgency"];
   const rows = [];
 
   DEPT_KEYS.forEach((deptKey) => {
@@ -570,7 +586,7 @@ function exportToCSV() {
     rows.push(header.join(","));
 
     group.forEach((t) => {
-      const row = [t.title || "", t.desc || "", t.update || "", t.department || deptLabel, t.owner || ""].map(
+      const row = [t.title || "", t.desc || "", t.update || "", t.department || deptLabel, t.owner || "", t.received || "", t.deadline || "", t.urgency || ""].map(
         (v) => `"${String(v).replace(/"/g, '""')}"`
       );
       rows.push(row.join(","));
@@ -584,7 +600,7 @@ function exportToCSV() {
     rows.push("Done");
     rows.push(header.join(","));
     doneTasks.forEach((t) => {
-      const row = [t.title || "", t.desc || "", t.update || "", t.department || "", t.owner || ""].map(
+      const row = [t.title || "", t.desc || "", t.update || "", t.department || "", t.owner || "", t.received || "", t.deadline || "", t.urgency || ""].map(
         (v) => `"${String(v).replace(/"/g, '""')}"`
       );
       rows.push(row.join(","));
@@ -623,7 +639,7 @@ async function init() {
   // Auth first
   if (!(await requireAuth())) return;
 
-  // ✅ FAST: render immediately from localStorage
+  // âœ… FAST: render immediately from localStorage
   renderTasks();
   renderArchive();
 
@@ -643,6 +659,9 @@ async function init() {
   }
 
   searchBtn?.addEventListener("click", doSearch);
+  searchInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") doSearch();
+  });
   clearSearchBtn?.addEventListener("click", () => {
     if (searchInput) searchInput.value = "";
     renderTasks();
