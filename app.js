@@ -658,6 +658,16 @@ async function init() {
       }
     });
     enableRealtime();
+
+    // Auto-refresh every 30 seconds (skip if modal is open)
+    setInterval(async () => {
+      if (modal.style.display === "flex") return;
+      const ok = await sbLoadAll();
+      if (ok) {
+        renderTasks();
+        renderArchive();
+      }
+    }, 5000);
   }
 
   searchBtn?.addEventListener("click", doSearch);
