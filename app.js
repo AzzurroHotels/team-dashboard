@@ -18,7 +18,7 @@ const searchInput = $("searchInput");
 const searchBtn = $("searchBtn");
 const clearSearchBtn = $("clearSearchBtn");
 
-const exportCSVBtn = $("exportCSV");a
+const exportCSVBtn = $("exportCSV");
 const addTaskBtn = $("globalAddTask");
 const logoutBtn = $("logoutBtn");
 
