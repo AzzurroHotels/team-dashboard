@@ -137,6 +137,7 @@ async function checkAdmin() {
 ========================= */
 async function sbLoadAll() {
   if (!isSupabaseConfigured()) return false;
+  if (Date.now() < sbSaveCooldown) return false;
 
   const [{ data: tData, error: tErr }, { data: aData, error: aErr }] =
     await Promise.all([
@@ -166,9 +167,14 @@ async function sbLoadAll() {
 }
 
 let sbSaveTimer = null;
+let sbSaveCooldown = 0;
 function sbScheduleSave() {
   clearTimeout(sbSaveTimer);
-  sbSaveTimer = setTimeout(() => sbUpsertAll(), 250);
+  sbSaveCooldown = Date.now() + 3000;
+  sbSaveTimer = setTimeout(async () => {
+    await sbUpsertAll();
+    sbSaveCooldown = Date.now() + 2000;
+  }, 250);
 }
 
 async function sbUpsertAll() {
@@ -318,7 +324,7 @@ function saveTask() {
 /* =========================
    RENDERING
 ========================= */
-const DEPT_KEYS = ["admin", "workforce", "compliance", "complaints", "acquisition", "teletrim"];
+const DEPT_KEYS = ["admin", "workforce", "compliance", "complaints", "acquisition", "alvin"];
 const DONE_KEY = "done";
 
 function isDoneTask(t) {
@@ -331,14 +337,17 @@ const KEY_TO_LABEL = {
   compliance: "Compliance",
   complaints: "Complaints",
   acquisition: "Acquisition",
-  teletrim: "Teletrim",
+  alvin: "Alvin",
 };
 const LABEL_TO_KEY = Object.fromEntries(Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k]));
+
+const LEGACY_KEYS = { teletrim: "alvin" };
 
 function normalizeDeptKey(v) {
   const s = String(v || "").trim();
   const key = LABEL_TO_KEY[s] || s.toLowerCase();
-  return DEPT_KEYS.includes(key) ? key : "admin";
+  const resolved = LEGACY_KEYS[key] || key;
+  return DEPT_KEYS.includes(resolved) ? resolved : "admin";
 }
 
 function keyToLabel(key) {
@@ -355,9 +364,9 @@ function renderTasks(filtered = null) {
 
   const list = filtered || tasks;
 
-  // Log Teletrim tasks specifically
-  const teletrimTasks = list.filter((t) => normalizeDeptKey(t.department) === "teletrim");
-  console.log("ðŸŽ¯ Teletrim tasks:", teletrimTasks);
+  // Log Alvin tasks specifically
+  const alvinTasks = list.filter((t) => normalizeDeptKey(t.department) === "alvin");
+  console.log("ðŸŽ¯ Alvin tasks:", alvinTasks);
 
   updateColumnCounts(list);
 
