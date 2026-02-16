@@ -218,13 +218,13 @@ function enableRealtime() {
 
   ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_TASKS }, async () => {
     await sbLoadAll();
-    renderTasks();
+    renderTasks(getFilteredTasks());
     renderArchive();
   });
 
   ch.on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE_ARCHIVE }, async () => {
     await sbLoadAll();
-    renderTasks();
+    renderTasks(getFilteredTasks());
     renderArchive();
   });
 
@@ -324,7 +324,7 @@ function saveTask() {
 /* =========================
    RENDERING
 ========================= */
-const DEPT_KEYS = ["admin", "workforce", "compliance", "complaints", "acquisition", "alvin"];
+const DEPT_KEYS = ["admin", "workforce", "compliance", "complaints", "acquisition", "finance", "alvin"];
 const DONE_KEY = "done";
 
 function isDoneTask(t) {
@@ -337,6 +337,7 @@ const KEY_TO_LABEL = {
   compliance: "Compliance",
   complaints: "Complaints",
   acquisition: "Acquisition",
+  finance: "Finance",
   alvin: "Alvin",
 };
 const LABEL_TO_KEY = Object.fromEntries(Object.entries(KEY_TO_LABEL).map(([k, v]) => [v, k]));
@@ -559,11 +560,11 @@ function enableDragAndDrop() {
 /* =========================
    SEARCH
 ========================= */
-function doSearch() {
+function getFilteredTasks() {
   const q = (searchInput?.value || "").trim().toLowerCase();
-  if (!q) return renderTasks();
+  if (!q) return null;
 
-  const filtered = tasks.filter((t) => {
+  return tasks.filter((t) => {
     return (
       (t.title && t.title.toLowerCase().includes(q)) ||
       (t.desc && t.desc.toLowerCase().includes(q)) ||
@@ -575,8 +576,10 @@ function doSearch() {
       (t.urgency && String(t.urgency).toLowerCase().includes(q))
     );
   });
+}
 
-  renderTasks(filtered);
+function doSearch() {
+  renderTasks(getFilteredTasks());
 }
 
 /* =========================
@@ -667,16 +670,6 @@ async function init() {
       }
     });
     enableRealtime();
-
-    // Auto-refresh every 30 seconds (skip if modal is open)
-    setInterval(async () => {
-      if (modal.style.display === "flex") return;
-      const ok = await sbLoadAll();
-      if (ok) {
-        renderTasks();
-        renderArchive();
-      }
-    }, 5000);
   }
 
   searchBtn?.addEventListener("click", doSearch);
